@@ -44,13 +44,34 @@ const checkPassword = (req, res, next) => {
   }
 };
 
+// Middleware to check admin verification
+const checkAdmin = (req, res, next) => {
+  if (req.session.adminVerified) {
+    next();
+  } else {
+    res.redirect('/admin-login');
+  }
+};
+
 // Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'password.html'));
 });
 
+app.get('/admin-login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-login.html'));
+});
+
+app.get('/admin', checkAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
 app.get('/dashboard', checkPassword, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+app.get('/profile', checkPassword, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'profile.html'));
 });
 
 app.post('/api/verify-password', (req, res) => {
@@ -62,6 +83,18 @@ app.post('/api/verify-password', (req, res) => {
     res.json({ success: true });
   } else {
     res.status(401).json({ success: false, error: 'Incorrect password' });
+  }
+});
+
+app.post('/api/verify-admin', (req, res) => {
+  const { password } = req.body;
+  const ADMIN_PASSWORD = 'babatunde20';
+
+  if (password === ADMIN_PASSWORD) {
+    req.session.adminVerified = true;
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ success: false, error: 'Incorrect admin password' });
   }
 });
 
@@ -91,7 +124,16 @@ app.get('/receipt', checkPassword, (req, res) => {
   if (!req.session.transactionData) {
     return res.redirect('/dashboard');
   }
-  res.sendFile(path.join(__dirname, 'public', 'receipt.html'));
+  res.sendFile(path.join(__dirname, 'public', 'receipt-capture.html'));
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error logging out' });
+    }
+    res.json({ success: true });
+  });
 });
 
 app.get('/details', checkPassword, (req, res) => {

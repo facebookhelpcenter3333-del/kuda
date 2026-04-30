@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - Kuda</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fff; }
+        .profile-container { min-height: 100vh; display: flex; flex-direction: column; padding: 20px; }
+        .profile-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 12px; margin-bottom: 30px; }
+        .profile-header h1 { font-size: 24px; margin: 0; }
+        .profile-section { margin-bottom: 30px; }
+        .profile-section-title { font-size: 14px; font-weight: 600; color: #999; text-transform: uppercase; margin-bottom: 15px; }
+        .profile-form { display: flex; flex-direction: column; gap: 15px; }
+        .form-group { display: flex; flex-direction: column; gap: 8px; }
+        .form-group label { font-size: 14px; font-weight: 500; color: #333; }
+        .form-group input { padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; }
+        .form-group input:focus { outline: none; border-color: #667eea; }
+        .profile-avatar { width: 100px; height: 100px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px; font-size: 40px; border: 4px solid #667eea; }
+        .profile-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+        .profile-btn-group { display: flex; gap: 12px; }
+        .profile-btn { flex: 1; padding: 12px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+        .profile-btn-primary { background: #667eea; color: white; }
+        .profile-btn-primary:hover { background: #5568d3; }
+        .profile-btn-secondary { background: #e0e0e0; color: #333; }
+        .profile-btn-secondary:hover { background: #d0d0d0; }
+        .profile-message { padding: 15px; border-radius: 8px; margin-bottom: 15px; display: none; font-size: 14px; }
+        .profile-message.success { display: block; background: #e8f5e9; color: #2e7d32; }
+        .profile-message.error { display: block; background: #ffebee; color: #c62828; }
+        .camera-input { display: none; }
+    </style>
+</head>
+<body>
+    <div class="profile-container">
+        <div class="profile-header">
+            <h1>Profile Settings</h1>
+        </div>
+        <div class="profile-message" id="profileMessage"></div>
+        <div class="profile-section">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div class="profile-avatar" id="profileAvatar"><span>👤</span></div>
+                <button class="profile-btn profile-btn-secondary" onclick="document.getElementById('cameraInput').click()">Capture Photo</button>
+                <input type="file" id="cameraInput" class="camera-input" accept="image/*" capture="user">
+            </div>
+            <h3 class="profile-section-title">Personal Information</h3>
+            <form class="profile-form" id="profileForm">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" placeholder="Enter your username" maxlength="30" required>
+                </div>
+            </form>
+        </div>
+        <div class="profile-btn-group">
+            <button class="profile-btn profile-btn-secondary" onclick="window.location.href='/dashboard'">Back</button>
+            <button class="profile-btn profile-btn-primary" id="saveBtn">Save Changes</button>
+        </div>
+    </div>
+
+    <script src="js/storage.js"></script>
+    <script src="js/permissions.js"></script>
+    <script>
+        let userAvatar = null;
+
+        window.addEventListener('load', async () => {
+            await storage.init();
+            loadUserProfile();
+        });
+
+        async function loadUserProfile() {
+            const user = await storage.getUser();
+            document.getElementById('username').value = user.username;
+            if (user.avatar) {
+                userAvatar = user.avatar;
+                document.getElementById('profileAvatar').innerHTML = `<img src="${user.avatar}" alt="Avatar">`;
+            }
+        }
+
+        document.getElementById('cameraInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    userAvatar = event.target.result;
+                    document.getElementById('profileAvatar').innerHTML = `<img src="${userAvatar}" alt="Avatar">`;
+                    showMessage('Photo selected!', 'success');
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        document.getElementById('saveBtn').addEventListener('click', async () => {
+            const usernameValue = document.getElementById('username').value.trim();
+            if (!usernameValue) {
+                showMessage('Please enter a username', 'error');
+                return;
+            }
+            try {
+                await storage.saveUser({ username: usernameValue, avatar: userAvatar, updatedAt: new Date().toISOString() });
+                showMessage('Profile saved!', 'success');
+                setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
+            } catch (error) {
+                showMessage('Error: ' + error.message, 'error');
+            }
+        });
+
+        function showMessage(text, type) {
+            const msg = document.getElementById('profileMessage');
+            msg.textContent = text;
+            msg.className = `profile-message ${type}`;
+            setTimeout(() => { msg.className = 'profile-message'; }, 3000);
+        }
+    </script>
+</body>
+</html>
