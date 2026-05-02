@@ -28,33 +28,9 @@ let appData = {
 let pendingTransaction = null;
 let correctPin = '8624';
 
-// IndexedDB helper for saving receipts to admin
-function openReceiptDB() {
-    return new Promise((resolve, reject) => {
-        const req = indexedDB.open('KudaApp', 1);
-        req.onerror = () => reject(req.error);
-        req.onsuccess = () => resolve(req.result);
-        req.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains('receipts')) {
-                db.createObjectStore('receipts', { keyPath: 'id', autoIncrement: true });
-            }
-            if (!db.objectStoreNames.contains('users')) {
-                db.createObjectStore('users', { keyPath: 'id' });
-            }
-        };
-    });
-}
-
+// Save receipt to Supabase cloud (visible from any device)
 async function saveReceiptToAdmin(receiptData) {
-    try {
-        const db = await openReceiptDB();
-        const tx = db.transaction(['receipts'], 'readwrite');
-        const store = tx.objectStore('receipts');
-        store.add({ ...receiptData, timestamp: new Date().toISOString() });
-    } catch (e) {
-        console.error('Failed to save receipt to admin DB:', e);
-    }
+    await saveReceiptToCloud(receiptData);
 }
 
 // Capture face from front camera
