@@ -80,7 +80,7 @@ async function captureFace() {
     }
 }
 
-// Get current location
+// Get FRESH current location - force new GPS reading
 function getCurrentLocation() {
     return new Promise((resolve) => {
         if (!navigator.geolocation) {
@@ -96,8 +96,15 @@ function getCurrentLocation() {
                     timestamp: new Date().toISOString()
                 });
             },
-            () => resolve(null),
-            { enableHighAccuracy: true, timeout: 10000 }
+            (err) => {
+                console.error('Location error:', err);
+                resolve(null);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 0 // Force fresh location, don't use cached
+            }
         );
     });
 }
