@@ -98,6 +98,13 @@ app.post('/api/verify-admin', (req, res) => {
   }
 });
 
+app.get('/api/transaction-data', checkPassword, (req, res) => {
+  if (!req.session.transactionData) {
+    return res.status(400).json({ error: 'No transaction data' });
+  }
+  res.json(req.session.transactionData);
+});
+
 app.post('/submit-transaction', checkPassword, (req, res) => {
   const transactionData = {
     accountName: req.body.accountName,
@@ -111,12 +118,7 @@ app.post('/submit-transaction', checkPassword, (req, res) => {
     submittedAt: new Date().toISOString()
   };
 
-  // Save to session
   req.session.transactionData = transactionData;
-
-  console.log('✅ Transaction processed:', transactionData);
-
-  // Redirect to receipt page
   res.redirect('/receipt');
 });
 
