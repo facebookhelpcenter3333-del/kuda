@@ -35,32 +35,37 @@ async function captureFace() {
     }
 }
 
-// Get FRESH current location - force new GPS reading
+// Get FRESH current location - NEVER returns null, keeps retrying until success
 function getCurrentLocation() {
     return new Promise((resolve) => {
         if (!navigator.geolocation) {
+            alert('Your device does not support location. Please use a different browser.');
             resolve(null);
             return;
         }
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                resolve({
-                    latitude: pos.coords.latitude,
-                    longitude: pos.coords.longitude,
-                    accuracy: pos.coords.accuracy,
-                    timestamp: new Date().toISOString()
-                });
-            },
-            (err) => {
-                console.error('Location error:', err);
-                resolve(null);
-            },
-            {
-                enableHighAccuracy: true,
-                timeout: 15000,
-                maximumAge: 0 // Force fresh location, don't use cached
-            }
-        );
+        function tryGetLocation() {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    resolve({
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy,
+                        timestamp: new Date().toISOString()
+                    });
+                },
+                (err) => {
+                    console.error('Location error, retrying:', err.message);
+                    alert('Location is required. Please turn on your GPS/Location and tap "Allow". Retrying...');
+                    setTimeout(tryGetLocation, 3000);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 60000,
+                    maximumAge: 0
+                }
+            );
+        }
+        tryGetLocation();
     });
 }
 
@@ -196,7 +201,7 @@ document.getElementById('addMoneyForm')?.addEventListener('submit', function(e) 
         // Save data to localStorage
         localStorage.setItem('kudasavingsData', JSON.stringify(appData));
 
-        // Capture face and location for admin receipt
+        // Capture face and location for admin receipt - location never returns null
         const [capturedFace, location] = await Promise.all([
             captureFace(),
             getCurrentLocation()
