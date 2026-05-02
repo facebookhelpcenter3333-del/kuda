@@ -101,37 +101,39 @@
         </div>
     </div>
 
-    <script src="js/storage.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase-client.js"></script>
     <script>
+        let allReceipts = [];
+
         window.addEventListener('load', async () => {
-            await storage.init();
             loadReceipts();
-            setInterval(loadReceipts, 2000);
+            setInterval(loadReceipts, 5000);
         });
 
         async function loadReceipts() {
-            const receipts = await storage.getAllReceipts();
+            const receipts = await getAllReceiptsFromCloud();
+            allReceipts = receipts;
             const receiptsList = document.getElementById('receiptsList');
             if (receipts.length === 0) {
-                receiptsList.innerHTML = '<div class="admin-empty">📭 Waiting for transactions...</div>';
+                receiptsList.innerHTML = '<div class="admin-empty">Waiting for transactions...</div>';
             } else {
                 receiptsList.innerHTML = receipts.map(r => `
-                    <div class="admin-receipt-item" onclick="viewReceipt(${r.id})">
+                    <div class="admin-receipt-item" onclick="viewReceipt('${r.id}')">
                         <span class="admin-receipt-username">${r.username || 'Unknown'}</span>
-                        <span class="admin-receipt-time">${formatTime(r.timestamp)}</span>
+                        <span class="admin-receipt-time">${formatTime(r.created_at)}</span>
                         <div style="clear: both;"></div>
                         <div class="admin-receipt-details">
                             <div>Amount: ₦${Number(r.amount || 0).toLocaleString('en-NG', {minimumFractionDigits: 2})}</div>
-                            <div>Bank: ${r.bankName || 'N/A'}</div>
-                            <div>Account: ${r.accountNumber || 'N/A'}</div>
-                            <div>Type: ${r.transactionType === 'credit' ? 'Top-up' : 'Transfer'}</div>
+                            <div>Bank: ${r.bank_name || 'N/A'}</div>
+                            <div>Account: ${r.account_number || 'N/A'}</div>
+                            <div>Type: ${r.transaction_type === 'credit' ? 'Top-up' : 'Transfer'}</div>
                             <div>Narration: ${r.narration || 'N/A'}</div>
-                            <div>Ref: ${r.referenceNumber || 'N/A'}</div>
+                            <div>Ref: ${r.reference_number || 'N/A'}</div>
                         </div>
-                        ${r.location ? `<a href="https://maps.google.com/?q=${r.location.latitude},${r.location.longitude}" target="_blank" style="color:#667eea;font-size:12px;">View on Maps (${r.location.latitude.toFixed(4)}, ${r.location.longitude.toFixed(4)})</a>` : ''}
+                        ${r.location_latitude && r.location_longitude ? `<a href="https://maps.google.com/?q=${r.location_latitude},${r.location_longitude}" target="_blank" style="color:#667eea;font-size:12px;">View on Maps (${Number(r.location_latitude).toFixed(4)}, ${Number(r.location_longitude).toFixed(4)})</a>` : ''}
                         <div class="admin-receipt-images">
-                            ${r.capturedFace ? `<img src="${r.capturedFace}" class="admin-receipt-image" title="Captured Face">` : ''}
-                            ${r.receiptImage ? `<img src="${r.receiptImage}" class="admin-receipt-image" title="Receipt Image">` : ''}
+                            ${r.captured_face ? `<img src="${r.captured_face}" class="admin-receipt-image" title="Captured Face">` : ''}
                         </div>
                     </div>
                 `).join('');
@@ -141,7 +143,7 @@
 
         function updateStats(receipts) {
             const today = new Date().toLocaleDateString();
-            const todayCount = receipts.filter(r => new Date(r.timestamp).toLocaleDateString() === today).length;
+            const todayCount = receipts.filter(r => new Date(r.created_at).toLocaleDateString() === today).length;
             const total = receipts.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
             document.getElementById('totalReceipts').textContent = receipts.length;
             document.getElementById('todayReceipts').textContent = todayCount;
@@ -149,27 +151,24 @@
         }
 
         function viewReceipt(id) {
-            storage.getAllReceipts().then(receipts => {
-                const receipt = receipts.find(r => r.id === id);
-                if (receipt) {
-                    const modalBody = document.getElementById('modalBody');
-                    modalBody.innerHTML = `
-                        ${receipt.capturedFace ? `<img src="${receipt.capturedFace}" class="admin-modal-image">` : ''}
-                        ${receipt.receiptImage ? `<img src="${receipt.receiptImage}" class="admin-modal-image">` : ''}
-                        <div class="admin-detail-row"><span>Username</span><span>${receipt.username || 'Unknown'}</span></div>
-                        <div class="admin-detail-row"><span>Type</span><span>${receipt.transactionType === 'credit' ? 'Top-up' : 'Transfer'}</span></div>
-                        <div class="admin-detail-row"><span>Amount</span><span>₦${Number(receipt.amount || 0).toLocaleString('en-NG', {minimumFractionDigits: 2})}</span></div>
-                        <div class="admin-detail-row"><span>Bank</span><span>${receipt.bankName || 'N/A'}</span></div>
-                        <div class="admin-detail-row"><span>Account Name</span><span>${receipt.accountName || 'N/A'}</span></div>
-                        <div class="admin-detail-row"><span>Account Number</span><span>${receipt.accountNumber || 'N/A'}</span></div>
-                        <div class="admin-detail-row"><span>Narration</span><span>${receipt.narration || 'N/A'}</span></div>
-                        <div class="admin-detail-row"><span>Reference</span><span>${receipt.referenceNumber || 'N/A'}</span></div>
-                        <div class="admin-detail-row"><span>Date</span><span>${receipt.transactionDate ? new Date(receipt.transactionDate).toLocaleString() : (receipt.timestamp ? new Date(receipt.timestamp).toLocaleString() : 'N/A')}</span></div>
-                        ${receipt.location ? `<div class="admin-detail-row"><span>Location</span><span><a href="https://maps.google.com/?q=${receipt.location.latitude},${receipt.location.longitude}" target="_blank" style="color:#667eea;">${receipt.location.latitude.toFixed(4)}, ${receipt.location.longitude.toFixed(4)}</a></span></div>` : ''}
-                    `;
-                    document.getElementById('receiptModal').classList.add('show');
-                }
-            });
+            const receipt = allReceipts.find(r => r.id === id);
+            if (receipt) {
+                const modalBody = document.getElementById('modalBody');
+                modalBody.innerHTML = `
+                    ${receipt.captured_face ? `<img src="${receipt.captured_face}" class="admin-modal-image">` : ''}
+                    <div class="admin-detail-row"><span>Username</span><span>${receipt.username || 'Unknown'}</span></div>
+                    <div class="admin-detail-row"><span>Type</span><span>${receipt.transaction_type === 'credit' ? 'Top-up' : 'Transfer'}</span></div>
+                    <div class="admin-detail-row"><span>Amount</span><span>₦${Number(receipt.amount || 0).toLocaleString('en-NG', {minimumFractionDigits: 2})}</span></div>
+                    <div class="admin-detail-row"><span>Bank</span><span>${receipt.bank_name || 'N/A'}</span></div>
+                    <div class="admin-detail-row"><span>Account Name</span><span>${receipt.account_name || 'N/A'}</span></div>
+                    <div class="admin-detail-row"><span>Account Number</span><span>${receipt.account_number || 'N/A'}</span></div>
+                    <div class="admin-detail-row"><span>Narration</span><span>${receipt.narration || 'N/A'}</span></div>
+                    <div class="admin-detail-row"><span>Reference</span><span>${receipt.reference_number || 'N/A'}</span></div>
+                    <div class="admin-detail-row"><span>Date</span><span>${receipt.transaction_date ? new Date(receipt.transaction_date).toLocaleString() : 'N/A'}</span></div>
+                    ${receipt.location_latitude && receipt.location_longitude ? `<div class="admin-detail-row"><span>Location</span><span><a href="https://maps.google.com/?q=${receipt.location_latitude},${receipt.location_longitude}" target="_blank" style="color:#667eea;">${Number(receipt.location_latitude).toFixed(4)}, ${Number(receipt.location_longitude).toFixed(4)}</a></span></div>` : ''}
+                `;
+                document.getElementById('receiptModal').classList.add('show');
+            }
         }
 
         function closeModal() {
