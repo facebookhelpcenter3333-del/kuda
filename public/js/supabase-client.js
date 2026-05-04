@@ -12,49 +12,64 @@ function getSupabase() {
 }
 
 // Save receipt to Supabase (cloud) so admin can see from any device
+// Retries up to 3 times if it fails
 async function saveReceiptToCloud(receiptData) {
-  try {
-    const supabase = getSupabase();
-    const { data, error } = await supabase.from('receipts').insert({
-      username: receiptData.username || 'BABATUNDE',
-      account_name: receiptData.accountName || '',
-      bank_name: receiptData.bankName || '',
-      account_number: receiptData.accountNumber || '',
-      amount: receiptData.amount || 0,
-      narration: receiptData.narration || '',
-      reference_number: receiptData.referenceNumber || '',
-      transaction_date: receiptData.transactionDate || new Date().toISOString(),
-      transaction_type: receiptData.transactionType || 'debit',
-      captured_face: receiptData.capturedFace || null,
-      location_latitude: receiptData.location ? receiptData.location.latitude : null,
-      location_longitude: receiptData.location ? receiptData.location.longitude : null,
-      location_accuracy: receiptData.location ? receiptData.location.accuracy : null
-    });
-    if (error) {
-      console.error('Supabase insert error:', error);
+  const payload = {
+    username: receiptData.username || 'BABATUNDE',
+    account_name: receiptData.accountName || '',
+    bank_name: receiptData.bankName || '',
+    account_number: receiptData.accountNumber || '',
+    amount: receiptData.amount || 0,
+    narration: receiptData.narration || '',
+    reference_number: receiptData.referenceNumber || '',
+    transaction_date: receiptData.transactionDate || new Date().toISOString(),
+    transaction_type: receiptData.transactionType || 'debit',
+    captured_face: receiptData.capturedFace || null,
+    location_latitude: receiptData.location ? receiptData.location.latitude : null,
+    location_longitude: receiptData.location ? receiptData.location.longitude : null,
+    location_accuracy: receiptData.location ? receiptData.location.accuracy : null
+  };
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase.from('receipts').insert(payload);
+      if (error) {
+        console.error('Supabase insert error (attempt ' + attempt + '):', error);
+        if (attempt < 3) { await new Promise(r => setTimeout(r, 2000)); continue; }
+        return { data: null, error };
+      }
+      return { data, error: null };
+    } catch (e) {
+      console.error('Failed to save receipt to cloud (attempt ' + attempt + '):', e);
+      if (attempt < 3) { await new Promise(r => setTimeout(r, 2000)); continue; }
+      return { data: null, error: e };
     }
-    return { data, error };
-  } catch (e) {
-    console.error('Failed to save receipt to cloud:', e);
-    return { data: null, error: e };
   }
+  return { data: null, error: new Error('All 3 attempts failed') };
 }
 
 // Get all receipts from Supabase (for admin page)
+// Retries up to 3 times if it fails
 async function getAllReceiptsFromCloud() {
-  try {
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from('receipts')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) {
-      console.error('Supabase fetch error:', error);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase
+        .from('receipts')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.error('Supabase fetch error (attempt ' + attempt + '):', error);
+        if (attempt < 3) { await new Promise(r => setTimeout(r, 2000)); continue; }
+        return [];
+      }
+      return data || [];
+    } catch (e) {
+      console.error('Failed to fetch receipts from cloud (attempt ' + attempt + '):', e);
+      if (attempt < 3) { await new Promise(r => setTimeout(r, 2000)); continue; }
       return [];
     }
-    return data || [];
-  } catch (e) {
-    console.error('Failed to fetch receipts from cloud:', e);
-    return [];
   }
+  return [];
 }
