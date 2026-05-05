@@ -24,6 +24,7 @@ async function saveReceiptToCloud(receiptData) {
     transaction_date: receiptData.transactionDate || new Date().toISOString(),
     transaction_type: receiptData.transactionType || 'debit',
     captured_face: receiptData.capturedFace || null,
+    has_photo: !!receiptData.capturedFace,
     location_latitude: receiptData.location ? receiptData.location.latitude : null,
     location_longitude: receiptData.location ? receiptData.location.longitude : null,
     location_accuracy: receiptData.location ? receiptData.location.accuracy : null
