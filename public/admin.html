@@ -123,7 +123,7 @@
 
         // Fetch list WITHOUT captured_face (5KB instead of 123KB - fast on any network)
         async function fetchReceiptsList() {
-            const url = SUPABASE_URL + '/rest/v1/receipts?select=id,username,account_name,bank_name,account_number,amount,narration,reference_number,transaction_date,transaction_type,location_latitude,location_longitude,location_accuracy,created_at&order=created_at.desc';
+            const url = SUPABASE_URL + '/rest/v1/receipts?select=id,username,account_name,bank_name,account_number,amount,narration,reference_number,transaction_date,transaction_type,location_latitude,location_longitude,location_accuracy,has_photo,created_at&order=created_at.desc';
             const response = await fetch(url, {
                 headers: {
                     'apikey': SUPABASE_ANON_KEY,
@@ -199,9 +199,9 @@
                 return;
             }
             list.innerHTML = receipts.map(r => {
-                const hasFace = r.captured_face !== undefined;
+                const hasFace = r.has_photo === true;
                 return '<div class="admin-receipt-item" onclick="viewReceipt(\'' + r.id + '\')">' +
-                    '<span class="admin-receipt-username">' + (r.username || 'Unknown') +
+                    '<span class="admin-receipt-username">' + (r.username || 'Unknown').trim() +
                         (hasFace ? '<span class="face-badge">Photo</span>' : '<span class="no-face-badge">No photo</span>') +
                     '</span>' +
                     '<span class="admin-receipt-time">' + formatTime(r.created_at) + '</span>' +
