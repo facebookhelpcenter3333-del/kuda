@@ -113,5 +113,11 @@ function viewDetails() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
+    const locationGranted = localStorage.getItem('locationGranted') === 'true';
+    const cameraGranted = localStorage.getItem('cameraGranted') === 'true';
+    if (!locationGranted || !cameraGranted) {
+        window.location.href = '/password.html';
+        return;
+    }
     loadTransaction();
 });
