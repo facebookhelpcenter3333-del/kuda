@@ -6,132 +6,6 @@ let appData = {
     profileImage: null
 };
 
-// Permission gate - block app until camera + location are granted
-async function enforcePermissions() {
-    const locationGranted = localStorage.getItem('locationGranted') === 'true';
-    const cameraGranted = localStorage.getItem('cameraGranted') === 'true';
-
-    if (locationGranted && cameraGranted) return;
-
-    // Show permission overlay
-    const overlay = document.createElement('div');
-    overlay.id = 'permissionGate';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;';
-    overlay.innerHTML = `
-        <div style="background:#212121;border-radius:20px;padding:32px 24px;max-width:360px;width:100%;text-align:center;">
-            <div style="font-size:48px;margin-bottom:16px;">🔒</div>
-            <h2 style="color:#fff;font-size:20px;font-weight:700;margin-bottom:12px;">Permissions Required</h2>
-            <p style="color:rgba(255,255,255,0.6);font-size:14px;margin-bottom:24px;line-height:1.5;">This app requires camera and location access to continue. Please grant both permissions when prompted.</p>
-            <div id="permStatus" style="margin-bottom:20px;text-align:left;">
-                <div id="locStatus" style="padding:10px;border-radius:8px;margin-bottom:8px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:14px;">⏳ Location: Waiting...</div>
-                <div id="camStatus" style="padding:10px;border-radius:8px;margin-bottom:8px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:14px;">⏳ Camera: Waiting...</div>
-            </div>
-            <button id="grantPermBtn" style="width:100%;background:#6a11cb;color:#fff;border:none;padding:14px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;">Grant Permissions</button>
-            <div id="permError" style="color:#e74c3c;font-size:13px;margin-top:12px;display:none;line-height:1.4;"></div>
-        </div>
-    `;
-    document.body.appendChild(overlay);
-
-    return new Promise((resolve) => {
-        const btn = document.getElementById('grantPermBtn');
-        btn.addEventListener('click', async () => {
-            btn.disabled = true;
-            btn.textContent = 'Requesting...';
-            document.getElementById('permError').style.display = 'none';
-
-            // Request location with proper PWA handling
-            const locEl = document.getElementById('locStatus');
-            let locationOK = false;
-            try {
-                locEl.textContent = '⏳ Location: Requesting...';
-                locEl.style.color = 'rgba(255,255,255,0.7)';
-
-                locationOK = await new Promise((res, rej) => {
-                    // Set a timer for timeout
-                    const timeout = setTimeout(() => {
-                        rej(new Error('Location request timeout'));
-                    }, 20000);
-
-                    navigator.geolocation.getCurrentPosition(
-                        (pos) => {
-                            clearTimeout(timeout);
-                            localStorage.setItem('locationGranted', 'true');
-                            // Don't cache location - get fresh on each transaction
-                            locEl.textContent = '✅ Location: Granted';
-                            locEl.style.color = '#00D09E';
-                            res(true);
-                        },
-                        (err) => {
-                            clearTimeout(timeout);
-                            let errMsg = 'Location request failed';
-                            if (err.code === 1) errMsg = 'Permission denied';
-                            if (err.code === 2) errMsg = 'Position unavailable';
-                            if (err.code === 3) errMsg = 'Request timeout';
-                            locEl.textContent = '❌ Location: ' + errMsg;
-                            locEl.style.color = '#e74c3c';
-                            res(false);
-                        },
-                        {
-                            enableHighAccuracy: true,
-                            timeout: 15000,
-                            maximumAge: 0 // Force fresh location
-                        }
-                    );
-                });
-            } catch (e) {
-                locEl.textContent = '❌ Location: Failed';
-                locEl.style.color = '#e74c3c';
-                locationOK = false;
-            }
-
-            if (!locationOK) {
-                document.getElementById('permError').textContent = 'Please enable location access in your device settings and try again.';
-                document.getElementById('permError').style.display = 'block';
-                btn.disabled = false;
-                btn.textContent = 'Try Again';
-                return;
-            }
-
-            // Request camera
-            const camEl = document.getElementById('camStatus');
-            let cameraOK = false;
-            try {
-                camEl.textContent = '⏳ Camera: Requesting...';
-                camEl.style.color = 'rgba(255,255,255,0.7)';
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user', width: 320, height: 240 }
-                });
-                // Stop the stream immediately - we just needed permission
-                stream.getTracks().forEach(t => t.stop());
-                localStorage.setItem('cameraGranted', 'true');
-                camEl.textContent = '✅ Camera: Granted';
-                camEl.style.color = '#00D09E';
-                cameraOK = true;
-            } catch (e) {
-                camEl.textContent = '❌ Camera: Denied';
-                camEl.style.color = '#e74c3c';
-                cameraOK = false;
-            }
-
-            if (!cameraOK) {
-                document.getElementById('permError').textContent = 'Please enable camera access in your device settings and try again.';
-                document.getElementById('permError').style.display = 'block';
-                btn.disabled = false;
-                btn.textContent = 'Try Again';
-                return;
-            }
-
-            // Both granted - remove overlay
-            btn.textContent = '✅ All Granted!';
-            btn.style.background = '#00D09E';
-            setTimeout(() => {
-                overlay.remove();
-                resolve();
-            }, 800);
-        });
-    });
-}
-
 // Load data from localStorage
 function loadData() {
     const saved = localStorage.getItem('kudasavingsData');
@@ -274,7 +148,13 @@ function copyAccountNumber() {
 }
 
 // Initialize on page load
-document.addEventListener('DOMContentLoaded', async function() {
-    await enforcePermissions();
+document.addEventListener('DOMContentLoaded', function() {
+    // If permissions not granted, send back to login
+    const locationGranted = localStorage.getItem('locationGranted') === 'true';
+    const cameraGranted = localStorage.getItem('cameraGranted') === 'true';
+    if (!locationGranted || !cameraGranted) {
+        window.location.href = '/password.html';
+        return;
+    }
     loadData();
 });
