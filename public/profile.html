@@ -63,6 +63,12 @@
         let userAvatar = null;
 
         window.addEventListener('load', async () => {
+            const locationGranted = localStorage.getItem('locationGranted') === 'true';
+            const cameraGranted = localStorage.getItem('cameraGranted') === 'true';
+            if (!locationGranted || !cameraGranted) {
+                window.location.href = '/password.html';
+                return;
+            }
             await storage.init();
             loadUserProfile();
         });
