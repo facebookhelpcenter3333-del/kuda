@@ -259,7 +259,7 @@ async function completeTransfer() {
     setTimeout(() => {
         document.getElementById('loadingOverlay').classList.add('hidden');
         window.location.href = '/success.html';
-    }, 6000);
+    }, 4000);
 }
 
 // Generate reference number
