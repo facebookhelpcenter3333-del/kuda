@@ -76,7 +76,7 @@ app.get('/profile', checkPassword, (req, res) => {
 
 app.post('/api/verify-password', (req, res) => {
   const { password } = req.body;
-  const CORRECT_PASSWORD = '019283';
+  const CORRECT_PASSWORD = '200121';
 
   if (password === CORRECT_PASSWORD) {
     req.session.passwordVerified = true;
