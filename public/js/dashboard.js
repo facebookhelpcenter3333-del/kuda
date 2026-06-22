@@ -59,7 +59,7 @@ function saveData() {
 }
 
 // Update UI
-function updateUI() {
+async function updateUI() {
     // Update balance
     const balanceEl = document.getElementById('dashboardBalance');
     if (balanceEl) {
@@ -79,11 +79,18 @@ function updateUI() {
         greetingEl.textContent = `Hi, ${appData.userName}`;
     }
 
-    // Update avatar
+    // Update avatar - check both localStorage and IndexedDB
     const avatarImg = document.getElementById('avatarImg');
     const userAvatar = document.getElementById('userAvatar');
-    if (avatarImg && appData.profileImage) {
-        avatarImg.src = appData.profileImage;
+    let avatarUrl = appData.profileImage;
+    if (!avatarUrl && typeof storage !== 'undefined') {
+        try {
+            const user = await storage.getUser();
+            if (user.avatar) avatarUrl = user.avatar;
+        } catch (e) {}
+    }
+    if (avatarImg && avatarUrl) {
+        avatarImg.src = avatarUrl;
         avatarImg.style.filter = 'none';
     }
 
