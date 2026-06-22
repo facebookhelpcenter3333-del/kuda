@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kuda</title>
-
-   <meta name="theme-color" content="#6a11cb">
+    <meta name="theme-color" content="#0a0a0a">
     <meta name="apple-mobile-web-app-capable" content="yes">
-
     <link rel="icon" type="image/png" sizes="96x96" href="/img/kuda.png">
     <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -16,33 +14,34 @@
         <!-- Header -->
         <div class="dashboard-header">
             <div class="user-info">
-                <div class="avatar">
-                    <img src="/img/icons8-money-96.png" alt="User" style="filter: brightness(0) invert(1);">
+                <div class="avatar" id="userAvatar">
+                    <img src="/img/icons8-money-96.png" alt="User" id="avatarImg">
                 </div>
                 <span class="greeting-text" id="greetingText">Hi, User</span>
             </div>
             <div class="header-actions">
                 <div class="header-icon">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-                        <path d="M12 8C10.3431 8 9 9.34315 9 11C9 11.5523 9.44772 12 10 12C10.5523 12 11 11.5523 11 11C11 10.4477 11.4477 10 12 10C12.5523 10 13 10.4477 13 11C13 11.5523 12.5523 12 12 12C11.4477 12 11 12.4477 11 13V14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        <circle cx="12" cy="16" r="0.5" fill="currentColor"/>
+                        <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M9.09 9C9.3251 8.33167 9.78915 7.76811 10.4 7.40914C11.0108 7.05016 11.7289 6.91894 12.4272 7.03872C13.1255 7.15849 13.7588 7.52153 14.2151 8.06353C14.6713 8.60553 14.9211 9.29153 14.92 10C14.92 12 11.92 13 11.92 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M12 17H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                 </div>
                 <div class="header-icon">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                         <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
+                    <span class="notification-badge">2</span>
                 </div>
             </div>
         </div>
 
-        <!-- Top Buttons -->
-        <div style="display: flex; gap: 8px; margin: 0 16px 8px; padding: 0;">
-            <button style="flex: 1; background: #212121; border: none; color: #ffffff; padding: 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;">Spend</button>
-            <button style="flex: 1; background: #212121; border: none; color: rgba(255,255,255,0.6); padding: 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;">Save</button>
-            <button style="flex: 1; background: #212121; border: none; color: rgba(255,255,255,0.6); padding: 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;">Borrow</button>
-            <button style="flex: 1; background: #212121; border: none; color: rgba(255,255,255,0.6); padding: 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;">Invest</button>
+        <!-- Top Tabs -->
+        <div class="top-tabs">
+            <button class="tab-btn active">Spend</button>
+            <button class="tab-btn">Save</button>
+            <button class="tab-btn">Borrow</button>
+            <button class="tab-btn">Invest</button>
         </div>
 
         <!-- Balance Card -->
@@ -54,24 +53,23 @@
                     </svg>
                     Naira Account - 2054502723
                     <button class="copy-account-btn" onclick="copyAccountNumber()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
                             <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
                             <path d="M5 15H4C3.46957 15 2.96086 14.7893 2.58579 14.4142C2.21071 14.0391 2 13.5304 2 13V4C2 3.46957 2.21071 2.96086 2.58579 2.58579C2.96086 2.21071 3.46957 2 4 2H13C13.5304 2 14.0391 2.21071 14.4142 2.58579C14.7893 2.96086 15 3.46957 15 4V5" stroke="currentColor" stroke-width="2"/>
                         </svg>
                     </button>
                 </div>
                 <div class="currency-selector">
-                    <span style="display: flex; align-items: center; gap: 4px;">
-                        <span style="font-size: 16px;">🇳🇬</span> <span class="currency-text">NGN</span>
-                    </span>
+                    <span class="currency-flag">🇳🇬</span>
+                    <span class="currency-text">NGN</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                        <path d="M19 9L12 16L5 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                 </div>
             </div>
             <div class="balance-amount" id="dashboardBalance">
                 ₦50.00
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="cursor: pointer;" onclick="toggleBalance()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="cursor: pointer; margin-left: 8px;" onclick="toggleBalance()">
                     <path d="M1 12S5 4 12 4s11 8 11 8-4 8-11 8S1 12 1 12z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     <circle cx="12" cy="12" r="3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
@@ -82,7 +80,7 @@
                 <button class="transfer-btn" onclick="goToTransfer()">
                     <div class="btn-icon-wrapper">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                            <path d="M12 19V5M5 12L12 5L19 12" stroke="" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M12 19V5M5 12L12 5L19 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
                     </div>
                     Transfer
@@ -90,7 +88,7 @@
                 <button class="add-money-btn" onclick="goToAddMoney()">
                     <div class="btn-icon-wrapper">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                            <path d="M12 5V19M5 12H19" stroke="" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
                     </div>
                     Add Money
@@ -98,30 +96,28 @@
             </div>
         </div>
 
-        <!-- Overdraft Banner -->
-        <div class="overdraft-banner">
-            <div class="overdraft-icon">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13.41 18.09V19.5H10.74V18.13C9.45 17.88 8.35 17.16 7.96 15.96L9.65 15.31C9.89 16.03 10.5 16.69 11.73 16.69C12.83 16.69 13.52 16.1 13.52 15.33C13.52 14.56 13.02 14.1 11.57 13.66C9.73 13.09 8.56 12.28 8.56 10.58C8.56 9.19 9.61 8.15 10.74 7.84V6.5H13.41V7.81C14.47 8.05 15.2 8.66 15.63 9.61L13.97 10.28C13.72 9.68 13.21 9.18 12.15 9.18C11.22 9.18 10.52 9.68 10.52 10.39C10.52 11.1 11.07 11.46 12.45 11.93C14.29 12.5 15.48 13.3 15.48 15.03C15.48 16.42 14.47 17.54 13.41 18.09Z" fill="#6B4C9A"/>
-                </svg>
-            </div>
-            <div class="overdraft-text">
-                <h3>Overdraft Offer</h3>
-                <p>Get money when you need it! Tap here for details.</p>
+        <!-- Schedule Banner -->
+        <div class="schedule-banner" id="scheduleBanner">
+            <div class="schedule-banner-content">
+                <div class="schedule-banner-text">
+                    <h3>Schedule A Transfer!</h3>
+                    <p>Set it, forget it, and we'll do the rest. Learn more here.</p>
+                </div>
+                <button class="schedule-close" onclick="closeBanner()">×</button>
             </div>
         </div>
 
         <!-- Quick Access -->
         <div class="quick-actions-header">
             <h3>Quick Access</h3>
-            <button class="edit-btn" onclick="alert('Edit feature coming soon!')">Edit</button>
+            <button class="edit-btn">Edit</button>
         </div>
         <div class="quick-actions">
             <div class="action-item" onclick="alert('Airtime feature coming soon!')">
                 <div class="action-icon airtime">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                        <rect x="5" y="2" width="14" height="20" rx="2" stroke="" stroke-width="2"/>
-                        <path d="M12 18H12.01" stroke="" stroke-width="2" stroke-linecap="round"/>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 22C16.4183 22 20 18.4183 20 14V10C20 5.58172 16.4183 2 12 2C7.58172 2 4 5.58172 4 10V14C4 18.4183 7.58172 22 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M12 18H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                 </div>
                 <span>Airtime</span>
@@ -129,30 +125,31 @@
 
             <div class="action-item" onclick="alert('Internet feature coming soon!')">
                 <div class="action-icon internet">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                        <path d="M2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10S2 17.523 2 12zm10-8a8 8 0 00-7.391 11h14.782A8 8 0 0012 4zm-7.391 13A8 8 0 0019.391 17H4.609z" fill=""/>
-                        <path d="M12 4c-2.21 0-4 3.582-4 8s1.79 8 4 8 4-3.582 4-8-1.79-8-4-8z" fill=""/>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M12 6V12L16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                 </div>
                 <span>Internet</span>
             </div>
 
-            <div class="action-item" onclick="alert('Betting feature coming soon!')">
-                <div class="action-icon betting">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="currentColor"/>
-                    </svg>
-                </div>
-                <span>Betting</span>
-            </div>
-
             <div class="action-item" onclick="alert('Electricity feature coming soon!')">
                 <div class="action-icon electricity">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                        <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" fill="currentColor"/>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                 </div>
                 <span>Electricity</span>
+            </div>
+
+            <div class="action-item" onclick="alert('TV feature coming soon!')">
+                <div class="action-icon tv">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <rect x="2" y="7" width="20" height="15" rx="2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M17 2L12 7L7 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <span>TV</span>
             </div>
         </div>
 
@@ -170,7 +167,6 @@
             <!-- Transactions will be loaded here -->
         </div>
 
-
         <!-- Bottom Navigation -->
         <div class="bottom-nav">
             <div class="nav-item active">
@@ -181,36 +177,32 @@
             </div>
             <div class="nav-item">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 5V19M5 12L12 5L19 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 <span>Send</span>
             </div>
             <div class="nav-item">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <rect x="3" y="7" width="18" height="11" rx="2" stroke="currentColor" stroke-width="2"/>
-                    <path d="M7 7V5C7 3.89543 7.89543 3 9 3H15C16.1046 3 17 3.89543 17 5V7" stroke="currentColor" stroke-width="2"/>
+                    <rect x="3" y="7" width="18" height="13" rx="2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3 10H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="7" cy="15" r="1" fill="currentColor"/>
                 </svg>
                 <span>Pay</span>
             </div>
             <div class="nav-item">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <rect x="3" y="7" width="18" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
-                    <path d="M3 10H21" stroke="currentColor" stroke-width="2"/>
+                    <rect x="3" y="7" width="18" height="13" rx="2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3 10H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     <circle cx="7" cy="15" r="1" fill="currentColor"/>
                 </svg>
                 <span>Cards</span>
             </div>
             <div class="nav-item">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <circle cx="5" cy="12" r="1" fill="currentColor"/>
-                    <circle cx="12" cy="12" r="1" fill="currentColor"/>
-                    <circle cx="19" cy="12" r="1" fill="currentColor"/>
-                    <circle cx="5" cy="5" r="1" fill="currentColor"/>
                     <circle cx="12" cy="5" r="1" fill="currentColor"/>
-                    <circle cx="19" cy="5" r="1" fill="currentColor"/>
-                    <circle cx="5" cy="19" r="1" fill="currentColor"/>
+                    <circle cx="12" cy="12" r="1" fill="currentColor"/>
                     <circle cx="12" cy="19" r="1" fill="currentColor"/>
-                    <circle cx="19" cy="19" r="1" fill="currentColor"/>
                 </svg>
                 <span>More</span>
             </div>
