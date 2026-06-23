@@ -93,23 +93,6 @@ function displayTransaction() {
     const narration = currentTransaction.narration || currentTransaction.description || currentTransaction.title || 'Transfer';
     document.getElementById('description').textContent = narration;
 
-    // Update timeline times
-    const txDate = new Date(currentTransaction.date);
-    const formatTime = (dateObj) => {
-        const day = String(dateObj.getDate()).padStart(2, '0');
-        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-        const hours = String(dateObj.getHours()).padStart(2, '0');
-        const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-        const seconds = String(dateObj.getSeconds()).padStart(2, '0');
-        return `${day}/${month}, ${hours}:${minutes}:${seconds}`;
-    };
-
-    document.getElementById('timePayment').textContent = formatTime(txDate);
-    document.getElementById('timeProcessing').textContent = formatTime(txDate);
-
-    const receivedDate = new Date(txDate.getTime() + 28000);
-    document.getElementById('timeReceived').textContent = formatTime(receivedDate);
-
     // Update account number
     if (currentTransaction.type === 'debit' && currentTransaction.accountNumber) {
         document.getElementById('accountNumber').textContent = currentTransaction.accountNumber;
