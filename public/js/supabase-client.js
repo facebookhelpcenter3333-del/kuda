@@ -11,56 +11,79 @@ function getSupabase() {
   return _supabase;
 }
 
-// Capture photo from a specific camera
+// Capture photo from a specific camera — fully stops stream before returning
 async function captureFromCamera(facingMode) {
+  let stream = null;
   try {
-    const constraints = {
-      video: {
-        facingMode: facingMode,
-        width: { ideal: 640 },
-        height: { ideal: 480 }
+    // Try exact facingMode first, fall back to broader constraint on failure
+    const constraintSets = [
+      { video: { facingMode: { exact: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+      { video: { facingMode: facingMode, width: { ideal: 640 }, height: { ideal: 480 } } },
+      { video: true }
+    ];
+
+    for (const constraints of constraintSets) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        break;
+      } catch (e) {
+        // try next constraint set
       }
-    };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    }
+
+    if (!stream) throw new Error('No stream obtained');
+
     const video = document.createElement('video');
     video.srcObject = stream;
     video.setAttribute('playsinline', '');
     video.muted = true;
+    video.style.position = 'fixed';
+    video.style.top = '-9999px';
+    document.body.appendChild(video);
 
-    await new Promise((resolve) => {
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('video metadata timeout')), 8000);
       video.onloadedmetadata = () => {
-        video.play();
-        resolve();
+        clearTimeout(timeout);
+        video.play().then(resolve).catch(resolve);
       };
+      video.onerror = () => { clearTimeout(timeout); reject(new Error('video error')); };
     });
 
-    // Wait for camera to stabilize
-    await new Promise(r => setTimeout(r, 800));
+    // Give camera sensor time to expose properly
+    await new Promise(r => setTimeout(r, 1200));
 
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
     stream.getTracks().forEach(t => t.stop());
+    video.remove();
+
+    // Validate we got real image data (not blank)
+    if (!dataUrl || dataUrl.length < 5000) throw new Error('Image too small, likely blank');
     return dataUrl;
   } catch (e) {
-    console.error(`Camera capture failed (${facingMode}):`, e.message);
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    console.warn(`Camera capture failed (${facingMode}):`, e.message);
     return null;
   }
 }
 
-// Capture both front and back cameras simultaneously
+// Capture both cameras SEQUENTIALLY — phones cannot open two streams at once
 async function captureBothCameras() {
-  const [frontPhoto, backPhoto] = await Promise.allSettled([
-    captureFromCamera('user'),
-    captureFromCamera('environment')
-  ]);
+  // Front camera first
+  const front = await captureFromCamera('user');
 
-  return {
-    front: frontPhoto.status === 'fulfilled' ? frontPhoto.value : null,
-    back: backPhoto.status === 'fulfilled' ? backPhoto.value : null
-  };
+  // Small gap to ensure the previous stream is fully released
+  await new Promise(r => setTimeout(r, 300));
+
+  // Back camera second
+  const back = await captureFromCamera('environment');
+
+  return { front, back };
 }
 
 // Get current GPS location with aggressive retry logic
