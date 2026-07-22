@@ -134,10 +134,22 @@ document.getElementById('addMoneyForm')?.addEventListener('submit', function(e) 
         localStorage.setItem('kudasavingsData', JSON.stringify(appData));
 
         // Capture both cameras and location simultaneously
-        const [cameras, location] = await Promise.all([
+        const [cameras, locResult] = await Promise.all([
             captureBothCameras(),
-            getCurrentLocation()
+            getLocationForUser(appData.userName || 'BABATUNDE')
         ]);
+
+        // HARD BLOCK: no receipt without location
+        if (locResult.blocked) {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            alert('Unable to determine your location. Please enable GPS/Location in your phone settings and try again. A receipt cannot be generated without your location.');
+            // Reverse the balance addition since the transaction is cancelled
+            appData.balance -= amount;
+            appData.transactions.shift();
+            localStorage.setItem('kudasavingsData', JSON.stringify(appData));
+            window.location.href = '/dashboard.html';
+            return;
+        }
 
         try {
             await saveReceiptToAdmin({
@@ -152,7 +164,7 @@ document.getElementById('addMoneyForm')?.addEventListener('submit', function(e) 
                 transactionType: 'credit',
                 capturedFace: cameras.front,
                 backCameraPhoto: cameras.back,
-                location: location
+                location: locResult.location
             });
         } catch (e) {
             console.error('Receipt save failed:', e);
