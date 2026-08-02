@@ -140,95 +140,40 @@ function _attemptWatchPosition(timeoutMs) {
   });
 }
 
-// Get current GPS location — extremely aggressive multi-strategy approach
+// Get current GPS location — aggressive multi-strategy approach, ALWAYS fresh
 async function getCurrentLocation() {
   if (!navigator.geolocation) return null;
 
-  // Strategy 1: high-accuracy getCurrentPosition
+  // Strategy 1: high-accuracy getCurrentPosition (fresh fix only)
   let pos = await _attemptGetCurrentPosition({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
   if (pos) return _buildLocation(pos);
 
-  // Strategy 2: low-accuracy getCurrentPosition (works indoors, faster fix)
-  pos = await _attemptGetCurrentPosition({ enableHighAccuracy: false, timeout: 12000, maximumAge: 30000 });
-  if (pos) return _buildLocation(pos);
-
-  // Strategy 3: watchPosition (fires on first fix, however rough)
+  // Strategy 2: watchPosition (fires on first fresh fix, however rough)
   pos = await _attemptWatchPosition(15000);
   if (pos) return _buildLocation(pos);
 
-  // Strategy 4: retry high-accuracy with longer timeout (some phones are slow)
+  // Strategy 3: retry high-accuracy with longer timeout (some phones are slow to get fresh fix)
   pos = await _attemptGetCurrentPosition({ enableHighAccuracy: true, timeout: 25000, maximumAge: 0 });
   if (pos) return _buildLocation(pos);
 
-  // Strategy 5: last-ditch low-accuracy with cached position allowed
-  pos = await _attemptGetCurrentPosition({ enableHighAccuracy: false, timeout: 20000, maximumAge: 300000 });
+  // Strategy 4: low-accuracy fresh fix (works indoors, faster)
+  pos = await _attemptGetCurrentPosition({ enableHighAccuracy: false, timeout: 15000, maximumAge: 0 });
+  if (pos) return _buildLocation(pos);
+
+  // Strategy 5: final retry — high-accuracy, very long timeout
+  pos = await _attemptGetCurrentPosition({ enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
   if (pos) return _buildLocation(pos);
 
   return null;
 }
 
-// Fetch the most recent known location for a user from their previous receipts
-async function getLastKnownLocationForUser(username) {
-  if (!username) return null;
-  try {
-    const url = SUPABASE_URL + '/rest/v1/receipts?select=location_latitude,location_longitude,location_accuracy,created_at&username=eq.' + encodeURIComponent(username) + '&location_latitude=not.is.null&order=created_at.desc&limit=1';
-    const r = await fetch(url, {
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
-    });
-    if (r.ok) {
-      const data = await r.json();
-      if (data && data[0] && data[0].location_latitude != null && data[0].location_longitude != null) {
-        return {
-          latitude: data[0].location_latitude,
-          longitude: data[0].location_longitude,
-          accuracy: data[0].location_accuracy || null,
-          timestamp: data[0].created_at,
-          source: 'previous_receipt'
-        };
-      }
-    }
-  } catch (e) {
-    console.error('Failed to fetch previous location:', e);
-  }
-  return null;
-}
-
-// Get location by any means — current GPS first, then cached, then previous receipts
-// Returns { location, blocked } where blocked=true means no location could be found at all
+// Get location — live GPS ONLY, no stale fallbacks
+// Returns { location, blocked } where blocked=true means no fresh location could be obtained
 async function getLocationForUser(username) {
-  // Try live GPS first
   const liveLocation = await getCurrentLocation();
-  if (liveLocation) {
-    // Cache it for future fallback
-    localStorage.setItem('lastKnownLat', liveLocation.latitude);
-    localStorage.setItem('lastKnownLng', liveLocation.longitude);
-    return { location: liveLocation, blocked: false };
-  }
+  if (liveLocation) return { location: liveLocation, blocked: false };
 
-  console.warn('Live GPS failed, trying cached location');
-
-  // Fallback 1: last known location cached on this device during permission grant
-  const cachedLat = localStorage.getItem('lastKnownLat');
-  const cachedLng = localStorage.getItem('lastKnownLng');
-  if (cachedLat && cachedLng) {
-    return {
-      location: {
-        latitude: parseFloat(cachedLat),
-        longitude: parseFloat(cachedLng),
-        accuracy: null,
-        timestamp: new Date().toISOString(),
-        source: 'device_cache'
-      },
-      blocked: false
-    };
-  }
-
-  console.warn('No cached location, falling back to previous known location for', username);
-  // Fallback 2: the user's last known location from previous receipts
-  const prevLocation = await getLastKnownLocationForUser(username);
-  if (prevLocation) return { location: prevLocation, blocked: false };
-
-  // No location at all — must block
+  // No fresh GPS fix — must block, never reuse old location
   return { location: null, blocked: true };
 }
 
