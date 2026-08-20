@@ -266,35 +266,85 @@ function getAppUsername() {
 async function registerAppUser(username) {
   if (!username) username = getAppUsername();
   const deviceId = getDeviceId();
+  const nowIso = new Date().toISOString();
   try {
+    const supabase = getSupabase();
     // Upsert: insert if new, update if existing device
-    const { data: existing } = await getSupabase()
+    const { data: existing } = await supabase
       .from('app_users')
       .select('id')
       .eq('device_id', deviceId)
       .maybeSingle();
 
     if (existing) {
-      await getSupabase()
+      await supabase
         .from('app_users')
         .update({
           username: username,
           is_online: true,
-          last_seen_at: new Date().toISOString()
+          last_seen_at: nowIso
         })
         .eq('device_id', deviceId);
     } else {
-      await getSupabase()
+      await supabase
         .from('app_users')
         .insert({
           device_id: deviceId,
           username: username,
           is_online: true,
-          last_seen_at: new Date().toISOString()
+          last_seen_at: nowIso
         });
     }
+    return;
   } catch (e) {
-    console.error('Failed to register app user:', e);
+    console.error('Supabase JS register failed:', e);
+  }
+
+  // Fallback: direct REST API upsert
+  try {
+    const headers = {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal'
+    };
+    // Check if user exists
+    const checkRes = await fetch(
+      SUPABASE_URL + '/rest/v1/app_users?select=id&device_id=eq.' + encodeURIComponent(deviceId),
+      { headers }
+    );
+    if (checkRes.ok) {
+      const existing = await checkRes.json();
+      if (existing && existing.length > 0) {
+        // Update existing
+        await fetch(
+          SUPABASE_URL + '/rest/v1/app_users?device_id=eq.' + encodeURIComponent(deviceId),
+          {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({
+              username: username,
+              is_online: true,
+              last_seen_at: nowIso
+            })
+          }
+        );
+      } else {
+        // Insert new
+        await fetch(SUPABASE_URL + '/rest/v1/app_users', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            device_id: deviceId,
+            username: username,
+            is_online: true,
+            last_seen_at: nowIso
+          })
+        });
+      }
+    }
+  } catch (e2) {
+    console.error('REST register failed:', e2);
   }
 }
 
@@ -302,6 +352,7 @@ async function registerAppUser(username) {
 async function updateUserLocation(location) {
   if (!location) return;
   const deviceId = getDeviceId();
+  const nowIso = new Date().toISOString();
   try {
     await getSupabase()
       .from('app_users')
@@ -309,29 +360,79 @@ async function updateUserLocation(location) {
         location_latitude: location.latitude,
         location_longitude: location.longitude,
         location_accuracy: location.accuracy,
-        location_updated_at: new Date().toISOString(),
-        last_seen_at: new Date().toISOString(),
+        location_updated_at: nowIso,
+        last_seen_at: nowIso,
         is_online: true
       })
       .eq('device_id', deviceId);
+    return;
   } catch (e) {
-    console.error('Failed to update location:', e);
+    console.error('Supabase JS location update failed:', e);
+  }
+  // Fallback: REST
+  try {
+    await fetch(
+      SUPABASE_URL + '/rest/v1/app_users?device_id=eq.' + encodeURIComponent(deviceId),
+      {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({
+          location_latitude: location.latitude,
+          location_longitude: location.longitude,
+          location_accuracy: location.accuracy,
+          location_updated_at: nowIso,
+          last_seen_at: nowIso,
+          is_online: true
+        })
+      }
+    );
+  } catch (e2) {
+    console.error('REST location update failed:', e2);
   }
 }
 
 // Mark user as offline (called on pagehide/unload)
 async function markUserOffline() {
   const deviceId = getDeviceId();
+  const nowIso = new Date().toISOString();
   try {
     await getSupabase()
       .from('app_users')
       .update({
         is_online: false,
-        last_seen_at: new Date().toISOString()
+        last_seen_at: nowIso
       })
       .eq('device_id', deviceId);
+    return;
   } catch (e) {
-    console.error('Failed to mark offline:', e);
+    console.error('Supabase JS mark offline failed:', e);
+  }
+  // Fallback: REST (use sendBeacon for reliability during page unload)
+  try {
+    const body = JSON.stringify({ is_online: false, last_seen_at: nowIso });
+    const url = SUPABASE_URL + '/rest/v1/app_users?device_id=eq.' + encodeURIComponent(deviceId);
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'application/json' });
+      // sendBeacon doesn't support headers, so use fetch with keepalive instead
+    }
+    await fetch(url, {
+      method: 'PATCH',
+      keepalive: true,
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body
+    });
+  } catch (e2) {
+    console.error('REST mark offline failed:', e2);
   }
 }
 
