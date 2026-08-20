@@ -6,7 +6,9 @@ let _supabase = null;
 
 function getSupabase() {
   if (!_supabase) {
-    _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+      _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
   }
   return _supabase;
 }

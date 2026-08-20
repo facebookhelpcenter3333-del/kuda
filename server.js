@@ -16,6 +16,17 @@ app.use(session({
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
+// Prevent caching of HTML and JS so PWA updates reach installed users
+app.use((req, res, next) => {
+  if (req.path.endsWith('.html') || req.path.endsWith('.js') || req.path === '/' || req.path === '/sw.js') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
+
 app.use(express.static('public'));
 
 // PWA Routes - serve manifest and service worker

@@ -1,7 +1,7 @@
 // Service Worker for Kudasavings PWA
 // This provides basic PWA functionality without interfering with existing logic
 
-const CACHE_NAME = 'kudasavings-v1';
+const CACHE_NAME = 'kudasavings-v3';
 const STATIC_ASSETS = [
   '/',
   '/css/style.css',
