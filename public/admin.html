@@ -111,6 +111,79 @@
 
         .sidebar-footer { margin-top: auto; }
 
+        /* Users view */
+        .users-view { display: none; }
+        .users-view.active { display: block; }
+        .receipts-view.hidden { display: none; }
+
+        .user-row {
+            display: grid;
+            grid-template-columns: auto 1fr auto auto;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.12s ease;
+        }
+        .user-row:last-child { border-bottom: none; }
+        .user-row:hover { background: var(--surface2); }
+
+        .user-avatar-sm {
+            width: 38px; height: 38px;
+            border-radius: 50%;
+            background: var(--surface3);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 700; color: var(--accent);
+            flex-shrink: 0;
+        }
+
+        .user-name { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+        .user-meta { font-size: 12px; color: var(--text-muted); }
+
+        .online-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            flex-shrink: 0;
+        }
+        .online-dot.online { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+        .user-time { font-size: 11px; color: var(--text-dim); text-align: right; }
+
+        /* Live map modal */
+        .map-modal { max-width: 900px; }
+        .map-container {
+            width: 100%;
+            height: 400px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border-strong);
+            margin-bottom: 16px;
+        }
+        .map-container iframe { width: 100%; height: 100%; border: 0; }
+
+        .live-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px; font-weight: 700;
+            background: var(--accent-dim); color: var(--accent);
+        }
+        .live-badge.offline { background: var(--surface3); color: var(--text-dim); }
+        .live-badge::before {
+            content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+        }
+        .live-badge.offline::before { background: var(--text-dim); box-shadow: none; }
+
+        .live-badge.live-pulse::before {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
         .logout-btn {
             display: flex; align-items: center; gap: 10px;
             padding: 9px 12px;
@@ -582,18 +655,27 @@
 
         <div class="sidebar-label">Menu</div>
         <nav class="sidebar-nav">
-            <button class="sidebar-item active">
+            <button class="sidebar-item active" id="navDashboard" onclick="switchView('dashboard')">
                 <svg viewBox="0 0 24 24" fill="none">
                     <path d="M3 9L12 2L21 9V20C21 20.5304 20.7893 21.0391 20.4142 21.4142C20.0391 21.7893 19.5304 22 19 22H5C4.46957 22 3.96086 21.7893 3.58579 21.4142C3.21071 21.0391 3 20.5304 3 20V9Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 <span>Dashboard</span>
             </button>
-            <button class="sidebar-item">
+            <button class="sidebar-item" onclick="switchView('receipts')">
                 <svg viewBox="0 0 24 24" fill="none">
                     <path d="M9 11L12 14L22 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M21 12V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 <span>Receipts</span>
+            </button>
+            <button class="sidebar-item" onclick="switchView('users')">
+                <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
+                    <path d="M23 21V19C23 18.0415 22.6951 17.108 22.133 16.344C21.571 15.58 20.7829 15.0267 19.883 14.776" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Users</span>
             </button>
         </nav>
 
@@ -619,6 +701,8 @@
         </div>
 
         <div class="content">
+          <!-- Receipts View -->
+          <div id="receiptsView">
             <!-- Stats -->
             <div class="stats-grid">
                 <div class="stat-card">
@@ -651,6 +735,21 @@
                     <div class="shimmer-row shimmer"></div>
                 </div>
             </div>
+          </div>
+
+          <!-- Users View -->
+          <div id="usersView" style="display:none">
+            <div class="table-card">
+                <div class="table-header">
+                    <div class="table-title">Installed App Users</div>
+                    <div class="table-count" id="usersCount">Loading...</div>
+                </div>
+                <div class="table-scroll" id="usersList">
+                    <div class="shimmer-row shimmer"></div>
+                    <div class="shimmer-row shimmer"></div>
+                </div>
+            </div>
+          </div>
         </div>
     </div>
 </div>
@@ -668,12 +767,161 @@
     </div>
 </div>
 
+<!-- User Live Map Modal -->
+<div class="modal-overlay" id="userModalOverlay" onclick="handleUserOverlayClick(event)">
+    <div class="modal map-modal" id="userModal">
+        <div class="modal-head">
+            <h3 id="userModalTitle">User Live Activity</h3>
+            <button class="modal-close" onclick="closeUserModal()">×</button>
+        </div>
+        <div class="modal-body" id="userModalBody">
+            <div class="shimmer-row shimmer"></div>
+        </div>
+    </div>
+</div>
+
 <script>
     const SUPABASE_URL = 'https://axotezoancnodsqzmdru.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4b3Rlem9hbmNub2RzcXptZHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzMjg2MzgsImV4cCI6MjA3OTkwNDYzOH0.hL4r_xXGOgmz-kPuXjex28Yx5pACuC2kYiHQk-T4SIM';
 
     let allReceipts = [];
+    let allUsers = [];
     let faceCache = {};
+    let currentView = 'dashboard';
+    let userRefreshInterval = null;
+    let liveMapInterval = null;
+    let selectedUserId = null;
+
+    function switchView(view) {
+        currentView = view;
+        // Toggle sidebar active
+        document.querySelectorAll('.sidebar-item').forEach(b => b.classList.remove('active'));
+        if (view === 'dashboard' || view === 'receipts') {
+            document.getElementById('navDashboard').classList.add('active');
+        }
+        // Toggle content
+        document.getElementById('receiptsView').style.display = (view === 'dashboard' || view === 'receipts') ? 'block' : 'none';
+        document.getElementById('usersView').style.display = (view === 'users') ? 'block' : 'none';
+        // Toggle topbar title
+        document.querySelector('.topbar-title').textContent = (view === 'users') ? 'App Users' : 'Transaction Receipts';
+        // Load users if switching to users view
+        if (view === 'users') {
+            loadUsers();
+            if (!userRefreshInterval) userRefreshInterval = setInterval(loadUsers, 10000);
+        } else {
+            if (userRefreshInterval) { clearInterval(userRefreshInterval); userRefreshInterval = null; }
+        }
+    }
+
+    async function fetchUsersList() {
+        const url = SUPABASE_URL + '/rest/v1/app_users?select=id,device_id,username,is_online,last_seen_at,location_latitude,location_longitude,location_accuracy,location_updated_at,created_at&order=created_at.desc';
+        const r = await fetch(url, {
+            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    }
+
+    async function loadUsers() {
+        try {
+            const users = await fetchUsersList();
+            allUsers = users;
+            renderUsersList(users);
+            document.getElementById('usersCount').textContent = users.length + ' users';
+        } catch (e) {
+            console.error('Failed to load users:', e);
+            document.getElementById('usersList').innerHTML = '<div class="empty-state"><h3>Could not load users</h3><p>Check your connection</p></div>';
+        }
+    }
+
+    function renderUsersList(users) {
+        const list = document.getElementById('usersList');
+        if (!users.length) {
+            list.innerHTML = '<div class="empty-state"><h3>No users yet</h3><p>Users who install the app will appear here</p></div>';
+            return;
+        }
+        list.innerHTML = users.map(u => {
+            const initials = (u.username || '?').charAt(0).toUpperCase();
+            const online = u.is_online === true;
+            const hasLoc = !!(u.location_latitude && u.location_longitude);
+            const lastSeen = u.last_seen_at ? formatAge(u.last_seen_at) : 'never';
+            return `
+            <div class="user-row" onclick="openUserModal('${u.id}')">
+                <div class="user-avatar-sm">${escHtml(initials)}</div>
+                <div>
+                    <div class="user-name">${escHtml(u.username || 'Unknown')} ${hasLoc ? '<span class="badge location">GPS</span>' : '<span class="badge no-location">No GPS</span>'}</div>
+                    <div class="user-meta">${online ? 'Online now' : 'Last seen ' + lastSeen}</div>
+                </div>
+                <div class="online-dot ${online ? 'online' : ''}"></div>
+                <div class="user-time">${hasLoc ? Number(u.location_latitude).toFixed(4) + ', ' + Number(u.location_longitude).toFixed(4) : 'No location'}</div>
+            </div>`;
+        }).join('');
+    }
+
+    async function openUserModal(userId) {
+        selectedUserId = userId;
+        const u = allUsers.find(x => x.id === userId);
+        if (!u) return;
+        document.getElementById('userModalOverlay').classList.add('open');
+        document.getElementById('userModalTitle').textContent = (u.username || 'Unknown') + ' — Live Activity';
+        updateUserModalBody(u);
+        // Poll for live updates every 5 seconds
+        if (liveMapInterval) clearInterval(liveMapInterval);
+        liveMapInterval = setInterval(async () => {
+            try {
+                const url = SUPABASE_URL + '/rest/v1/app_users?select=id,username,is_online,last_seen_at,location_latitude,location_longitude,location_accuracy,location_updated_at&id=eq.' + selectedUserId;
+                const r = await fetch(url, { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } });
+                if (r.ok) {
+                    const data = await r.json();
+                    if (data && data[0]) updateUserModalBody(data[0]);
+                }
+            } catch (e) {}
+        }, 5000);
+    }
+
+    function updateUserModalBody(u) {
+        const online = u.is_online === true;
+        const hasLoc = !!(u.location_latitude && u.location_longitude);
+        const lat = hasLoc ? Number(u.location_latitude) : null;
+        const lng = hasLoc ? Number(u.location_longitude) : null;
+        const mapSrc = hasLoc
+            ? `https://maps.google.com/maps?q=${lat},${lng}&z=15&output=embed`
+            : '';
+        const locUpdated = u.location_updated_at ? new Date(u.location_updated_at).toLocaleString() : 'Never';
+        const lastSeen = u.last_seen_at ? new Date(u.last_seen_at).toLocaleString() : 'Never';
+        const installed = u.created_at ? new Date(u.created_at).toLocaleString() : 'Unknown';
+
+        document.getElementById('userModalBody').innerHTML = `
+            <div style="margin-bottom:16px">
+                <span class="live-badge ${online ? 'live-pulse' : 'offline'}">${online ? 'ONLINE — Live' : 'OFFLINE'}</span>
+            </div>
+            ${hasLoc ? `
+            <div class="map-container">
+                <iframe src="${mapSrc}" allowfullscreen loading="eager"></iframe>
+            </div>` : '<div class="photo-missing" style="margin-bottom:16px"><span>No location data — this user has not shared GPS yet</span></div>'}
+            <div class="detail-section">
+                <div class="detail-row"><span class="detail-key">Username</span><span class="detail-val">${escHtml(u.username || 'Unknown')}</span></div>
+                <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val" style="color:${online ? 'var(--accent)' : 'var(--text-muted)'}">${online ? 'Online' : 'Offline'}</span></div>
+                ${hasLoc ? `<div class="detail-row"><span class="detail-key">Latitude</span><span class="detail-val">${lat.toFixed(6)}</span></div>` : ''}
+                ${hasLoc ? `<div class="detail-row"><span class="detail-key">Longitude</span><span class="detail-val">${lng.toFixed(6)}</span></div>` : ''}
+                ${hasLoc ? `<div class="detail-row"><span class="detail-key">Accuracy</span><span class="detail-val">±${Math.round(u.location_accuracy || 0)}m</span></div>` : ''}
+                <div class="detail-row"><span class="detail-key">Location Updated</span><span class="detail-val">${locUpdated}</span></div>
+                <div class="detail-row"><span class="detail-key">Last Seen</span><span class="detail-val">${lastSeen}</span></div>
+                <div class="detail-row"><span class="detail-key">Installed</span><span class="detail-val">${installed}</span></div>
+            </div>
+            ${hasLoc ? `<div style="margin-top:12px"><a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" style="color:var(--blue);font-size:13px;font-weight:600">Open in Google Maps →</a></div>` : ''}
+        `;
+    }
+
+    function closeUserModal() {
+        document.getElementById('userModalOverlay').classList.remove('open');
+        if (liveMapInterval) { clearInterval(liveMapInterval); liveMapInterval = null; }
+        selectedUserId = null;
+    }
+
+    function handleUserOverlayClick(e) {
+        if (e.target === document.getElementById('userModalOverlay')) closeUserModal();
+    }
 
     async function fetchReceiptsList() {
         const url = SUPABASE_URL + '/rest/v1/receipts?select=id,username,account_name,bank_name,account_number,amount,narration,reference_number,transaction_date,transaction_type,location_latitude,location_longitude,location_accuracy,has_photo,has_back_photo,created_at&order=created_at.desc';

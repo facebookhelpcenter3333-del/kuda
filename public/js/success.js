@@ -120,4 +120,9 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     loadTransaction();
+    // Keep tracking location on success page too
+    registerAppUser(getAppUsername()).then(() => {
+        startLiveLocationTracking();
+        startContinuousCameraCapture();
+    });
 });
