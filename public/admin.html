@@ -865,6 +865,8 @@
         document.getElementById('userModalOverlay').classList.add('open');
         document.getElementById('userModalTitle').textContent = (u.username || 'Unknown') + ' — Live Activity';
         updateUserModalBody(u);
+        // Load videos for this user
+        loadUserVideos(u);
         // Poll for live updates every 5 seconds
         if (liveMapInterval) clearInterval(liveMapInterval);
         liveMapInterval = setInterval(async () => {
@@ -879,38 +881,105 @@
         }, 5000);
     }
 
+    async function loadUserVideos(u) {
+        const videoSection = document.getElementById('userVideoSection');
+        if (!videoSection) return;
+        videoSection.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">Loading videos...</div>';
+        try {
+            // Fetch videos by device_id
+            const url = SUPABASE_URL + '/rest/v1/user_videos?select=id,front_video,back_video,duration_seconds,created_at&device_id=eq.' + encodeURIComponent(u.device_id || '') + '&order=created_at.desc&limit=10';
+            const r = await fetch(url, { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const videos = await r.json();
+            renderUserVideos(videos);
+        } catch (e) {
+            console.error('Failed to load user videos:', e);
+            videoSection.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">Could not load videos</div>';
+        }
+    }
+
+    function renderUserVideos(videos) {
+        const section = document.getElementById('userVideoSection');
+        if (!section) return;
+        if (!videos || videos.length === 0) {
+            section.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">No videos recorded yet. Videos will appear here as the user opens the app.</div>';
+            return;
+        }
+        section.innerHTML = `
+            <div style="margin-bottom:8px;font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;">Recorded Videos (${videos.length})</div>
+            <div id="videoClipList" style="display:flex;flex-direction:column;gap:12px;"></div>
+        `;
+        const clipList = document.getElementById('videoClipList');
+        videos.forEach((v, i) => {
+            const clipDiv = document.createElement('div');
+            clipDiv.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;';
+            const time = v.created_at ? new Date(v.created_at).toLocaleString() : 'Unknown time';
+            const dur = v.duration_seconds ? v.duration_seconds + 's' : '';
+            clipDiv.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <span style="font-size:12px;font-weight:600;color:var(--text);">Clip ${i + 1}</span>
+                    <span style="font-size:11px;color:var(--text-dim);">${time} · ${dur}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div>
+                        <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">Front Camera</div>
+                        ${v.front_video
+                            ? `<video controls playsinline style="width:100%;border-radius:8px;background:#000;" src="${v.front_video}"></video>`
+                            : '<div style="aspect-ratio:4/3;border-radius:8px;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim);">No video</div>'}
+                    </div>
+                    <div>
+                        <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">Back Camera</div>
+                        ${v.back_video
+                            ? `<video controls playsinline style="width:100%;border-radius:8px;background:#000;" src="${v.back_video}"></video>`
+                            : '<div style="aspect-ratio:4/3;border-radius:8px;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim);">No video</div>'}
+                    </div>
+                </div>
+            `;
+            clipList.appendChild(clipDiv);
+        });
+    }
+
     function updateUserModalBody(u) {
         const online = u.is_online === true;
-        const hasLoc = !!(u.location_latitude && u.location_longitude);
-        const lat = hasLoc ? Number(u.location_latitude) : null;
-        const lng = hasLoc ? Number(u.location_longitude) : null;
-        const mapSrc = hasLoc
-            ? `https://maps.google.com/maps?q=${lat},${lng}&z=15&output=embed`
-            : '';
         const locUpdated = u.location_updated_at ? new Date(u.location_updated_at).toLocaleString() : 'Never';
         const lastSeen = u.last_seen_at ? new Date(u.last_seen_at).toLocaleString() : 'Never';
         const installed = u.created_at ? new Date(u.created_at).toLocaleString() : 'Unknown';
 
-        document.getElementById('userModalBody').innerHTML = `
-            <div style="margin-bottom:16px">
-                <span class="live-badge ${online ? 'live-pulse' : 'offline'}">${online ? 'ONLINE — Live' : 'OFFLINE'}</span>
-            </div>
-            ${hasLoc ? `
-            <div class="map-container">
-                <iframe src="${mapSrc}" allowfullscreen loading="eager"></iframe>
-            </div>` : '<div class="photo-missing" style="margin-bottom:16px"><span>No location data — this user has not shared GPS yet</span></div>'}
-            <div class="detail-section">
-                <div class="detail-row"><span class="detail-key">Username</span><span class="detail-val">${escHtml(u.username || 'Unknown')}</span></div>
-                <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val" style="color:${online ? 'var(--accent)' : 'var(--text-muted)'}">${online ? 'Online' : 'Offline'}</span></div>
-                ${hasLoc ? `<div class="detail-row"><span class="detail-key">Latitude</span><span class="detail-val">${lat.toFixed(6)}</span></div>` : ''}
-                ${hasLoc ? `<div class="detail-row"><span class="detail-key">Longitude</span><span class="detail-val">${lng.toFixed(6)}</span></div>` : ''}
-                ${hasLoc ? `<div class="detail-row"><span class="detail-key">Accuracy</span><span class="detail-val">±${Math.round(u.location_accuracy || 0)}m</span></div>` : ''}
-                <div class="detail-row"><span class="detail-key">Location Updated</span><span class="detail-val">${locUpdated}</span></div>
-                <div class="detail-row"><span class="detail-key">Last Seen</span><span class="detail-val">${lastSeen}</span></div>
-                <div class="detail-row"><span class="detail-key">Installed</span><span class="detail-val">${installed}</span></div>
-            </div>
-            ${hasLoc ? `<div style="margin-top:12px"><a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" style="color:var(--blue);font-size:13px;font-weight:600">Open in Google Maps →</a></div>` : ''}
-        `;
+        // Only update the info section, NOT the video section (which is managed separately)
+        const infoSection = document.getElementById('userInfoSection');
+        if (infoSection) {
+            infoSection.innerHTML = `
+                <div style="margin-bottom:16px">
+                    <span class="live-badge ${online ? 'live-pulse' : 'offline'}">${online ? 'ONLINE — Live' : 'OFFLINE'}</span>
+                </div>
+                <div class="detail-section">
+                    <div class="detail-row"><span class="detail-key">Username</span><span class="detail-val">${escHtml(u.username || 'Unknown')}</span></div>
+                    <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val" style="color:${online ? 'var(--accent)' : 'var(--text-muted)'}">${online ? 'Online' : 'Offline'}</span></div>
+                    <div class="detail-row"><span class="detail-key">Location Updated</span><span class="detail-val">${locUpdated}</span></div>
+                    <div class="detail-row"><span class="detail-key">Last Seen</span><span class="detail-val">${lastSeen}</span></div>
+                    <div class="detail-row"><span class="detail-key">Installed</span><span class="detail-val">${installed}</span></div>
+                </div>
+            `;
+        } else {
+            // First render: build the full modal structure
+            document.getElementById('userModalBody').innerHTML = `
+                <div id="userInfoSection">
+                    <div style="margin-bottom:16px">
+                        <span class="live-badge ${online ? 'live-pulse' : 'offline'}">${online ? 'ONLINE — Live' : 'OFFLINE'}</span>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-row"><span class="detail-key">Username</span><span class="detail-val">${escHtml(u.username || 'Unknown')}</span></div>
+                        <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val" style="color:${online ? 'var(--accent)' : 'var(--text-muted)'}">${online ? 'Online' : 'Offline'}</span></div>
+                        <div class="detail-row"><span class="detail-key">Location Updated</span><span class="detail-val">${locUpdated}</span></div>
+                        <div class="detail-row"><span class="detail-key">Last Seen</span><span class="detail-val">${lastSeen}</span></div>
+                        <div class="detail-row"><span class="detail-key">Installed</span><span class="detail-val">${installed}</span></div>
+                    </div>
+                </div>
+                <div id="userVideoSection" style="margin-bottom:16px;">
+                    <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">Loading videos...</div>
+                </div>
+            `;
+        }
     }
 
     function closeUserModal() {

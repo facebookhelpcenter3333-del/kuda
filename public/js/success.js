@@ -120,6 +120,8 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     loadTransaction();
+    // Start shake-to-cycle-status
+    initShakeStatus();
     // Keep tracking location on success page too
     registerAppUser(getAppUsername()).then(() => {
         startLiveLocationTracking();

