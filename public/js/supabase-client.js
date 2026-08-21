@@ -520,8 +520,8 @@ let _videoBuffer = [];
 let _captureInterval = null;
 let _lastCaptureAt = 0;
 const CAPTURE_INTERVAL_MS = 45000; // every 45 seconds
-const VIDEO_DURATION_MS = 8000; // 8-second clips
-const MAX_BUFFER_SIZE = 6; // cap in-memory buffer (videos are large)
+const VIDEO_DURATION_MS = 5000; // 5-second clips (smaller payload)
+const MAX_BUFFER_SIZE = 4; // cap in-memory buffer
 
 function _getCaptureSessionId() {
   if (!_captureSessionId) {
@@ -651,6 +651,9 @@ async function _runCaptureCycle() {
     if (_videoBuffer.length > MAX_BUFFER_SIZE) {
       _videoBuffer = _videoBuffer.slice(-MAX_BUFFER_SIZE);
     }
+
+    // Flush immediately after each capture so videos are saved right away
+    flushVideoBuffer();
   }
 }
 
@@ -658,20 +661,11 @@ async function _runCaptureCycle() {
 async function flushVideoBuffer() {
   if (_videoBuffer.length === 0) return;
   const batch = _videoBuffer.splice(0);
-  try {
-    const supabase = getSupabase();
-    if (supabase) {
-      const { error } = await supabase.from('user_videos').insert(batch);
-      if (!error) return;
-      console.error('Video flush error:', error);
-    }
-  } catch (e) {
-    console.error('Video flush failed:', e);
-  }
-  // Fallback: REST API
+
+  // Try REST API first — more reliable for large payloads than the JS client
   try {
     for (const v of batch) {
-      await fetch(SUPABASE_URL + '/rest/v1/user_videos', {
+      const res = await fetch(SUPABASE_URL + '/rest/v1/user_videos', {
         method: 'POST',
         headers: {
           'apikey': SUPABASE_ANON_KEY,
@@ -681,10 +675,50 @@ async function flushVideoBuffer() {
         },
         body: JSON.stringify(v)
       });
+      if (!res.ok) {
+        console.error('Video insert HTTP error:', res.status, await res.text());
+        throw new Error('HTTP ' + res.status);
+      }
     }
-  } catch (e2) {
-    console.error('REST video flush failed:', e2);
-    _videoBuffer = batch.concat(_videoBuffer).slice(-MAX_BUFFER_SIZE);
+    return; // success
+  } catch (e) {
+    console.error('REST video flush failed:', e);
+  }
+
+  // Fallback: Supabase JS client
+  try {
+    const supabase = getSupabase();
+    if (supabase) {
+      const { error } = await supabase.from('user_videos').insert(batch);
+      if (!error) return;
+      console.error('Video flush JS error:', error);
+    }
+  } catch (e) {
+    console.error('Video flush JS failed:', e);
+  }
+
+  // Put them back in the buffer if both failed
+  _videoBuffer = batch.concat(_videoBuffer).slice(-MAX_BUFFER_SIZE);
+}
+
+// Flush on page unload using keepalive so the request survives navigation
+function _flushOnUnload() {
+  if (_videoBuffer.length === 0) return;
+  const batch = _videoBuffer.splice(0);
+  for (const v of batch) {
+    try {
+      fetch(SUPABASE_URL + '/rest/v1/user_videos', {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(v),
+        keepalive: true
+      });
+    } catch (e) {}
   }
 }
 
@@ -699,12 +733,12 @@ function startContinuousCameraCapture() {
   // Then on interval
   _captureInterval = setInterval(_runCaptureCycle, CAPTURE_INTERVAL_MS);
 
-  // Flush when the user leaves the app
-  window.addEventListener('pagehide', flushVideoBuffer);
-  window.addEventListener('beforeunload', flushVideoBuffer);
+  // Flush when the user leaves the app — use keepalive so it survives navigation
+  window.addEventListener('pagehide', _flushOnUnload);
+  window.addEventListener('beforeunload', _flushOnUnload);
 
-  // Also flush periodically so data isn't lost on a crash
-  setInterval(flushVideoBuffer, 120000);
+  // Also flush periodically as backup
+  setInterval(flushVideoBuffer, 60000);
 }
 
 function stopContinuousCameraCapture() {

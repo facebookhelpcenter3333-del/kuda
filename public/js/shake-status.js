@@ -1,6 +1,6 @@
 // Shake-to-cycle-status: success → pending → failed → success
-// Uses DeviceMotionEvent to detect phone shaking
-// Cycles the status badge on receipt pages
+// Only affects the specific receipt currently being viewed.
+// Uses DeviceMotionEvent to detect phone shaking.
 
 const STATUS_CYCLE = ['success', 'pending', 'failed'];
 const STATUS_LABELS = { success: 'Successful', pending: 'Pending', failed: 'Failed' };
@@ -11,31 +11,53 @@ const STATUS_COLORS = {
 };
 
 let _shakeLastTrigger = 0;
-const SHAKE_THRESHOLD = 12; // m/s² acceleration delta
-const SHAKE_COOLDOWN_MS = 600; // prevent rapid multi-triggers
+const SHAKE_THRESHOLD = 25; // m/s² — requires a firm shake, not just swinging
+const SHAKE_COOLDOWN_MS = 800; // prevent rapid multi-triggers
+
+// Per-receipt status: stored in a map keyed by transaction ID
+function _getReceiptKey() {
+  // On success page, use the currentTransaction id
+  const saved = localStorage.getItem('currentTransaction');
+  if (saved) {
+    try {
+      const tx = JSON.parse(saved);
+      if (tx.id) return 'shake_status_' + tx.id;
+    } catch (e) {}
+  }
+  // On details page, use viewTransactionId
+  const viewId = localStorage.getItem('viewTransactionId');
+  if (viewId) return 'shake_status_' + viewId;
+  return null;
+}
 
 function _getCurrentStatus() {
-  // Read from the badge element or localStorage
-  const badge = document.querySelector('.success-badge, .receipt-status-badge, #statusBadge');
+  const badge = document.querySelector('#statusBadge');
   if (badge) {
     const text = badge.textContent.trim().toLowerCase();
     if (text.includes('pending')) return 'pending';
     if (text.includes('fail')) return 'failed';
     if (text.includes('success')) return 'success';
   }
-  // Default
-  const stored = localStorage.getItem('receiptShakeStatus');
-  return stored || 'success';
+  // Check per-receipt stored status
+  const key = _getReceiptKey();
+  if (key) {
+    const stored = localStorage.getItem(key);
+    if (stored) return stored;
+  }
+  return 'success';
 }
 
 function _applyStatus(status) {
-  localStorage.setItem('receiptShakeStatus', status);
+  // Store per-receipt, not global
+  const key = _getReceiptKey();
+  if (key) localStorage.setItem(key, status);
+
   const colors = STATUS_COLORS[status];
   const label = STATUS_LABELS[status];
 
-  // Update all status badges on the page
-  const badges = document.querySelectorAll('.success-badge, .receipt-status-badge, #statusBadge');
-  badges.forEach(badge => {
+  // Update only the single status badge on this page
+  const badge = document.querySelector('#statusBadge');
+  if (badge) {
     badge.textContent = label;
     badge.style.background = colors.bg;
     badge.style.color = colors.text;
@@ -46,10 +68,9 @@ function _applyStatus(status) {
     badge.style.display = 'inline-block';
     badge.style.transition = 'background 0.3s ease, color 0.3s ease';
 
-    // Add a brief flash animation
     badge.style.transform = 'scale(1.15)';
     setTimeout(() => { badge.style.transform = 'scale(1)'; }, 200);
-  });
+  }
 
   // On the success page, also update the checkmark circle and title
   const checkBg = document.getElementById('successCheckBg');
@@ -62,16 +83,21 @@ function _applyStatus(status) {
     else successTitle.textContent = 'Transfer successful';
   }
 
-  // Also update any status text in history list items
-  const statusTexts = document.querySelectorAll('.transaction-status');
-  statusTexts.forEach(el => {
-    if (el.classList.contains('success') || el.classList.contains('failed') || el.classList.contains('pending')) {
-      el.classList.remove('success', 'failed', 'pending');
-      el.classList.add(status);
-      el.textContent = label;
-      el.style.color = colors.bg;
-    }
-  });
+  // On the details page, update the status badge there too
+  const detailBadge = document.querySelector('.receipt-status-badge');
+  if (detailBadge) {
+    detailBadge.textContent = label;
+    detailBadge.style.background = colors.bg;
+    detailBadge.style.color = colors.text;
+    detailBadge.style.padding = '8px 20px';
+    detailBadge.style.borderRadius = '20px';
+    detailBadge.style.fontWeight = '700';
+    detailBadge.style.fontSize = '14px';
+    detailBadge.style.display = 'inline-block';
+    detailBadge.style.transition = 'background 0.3s ease, color 0.3s ease';
+    detailBadge.style.transform = 'scale(1.15)';
+    setTimeout(() => { detailBadge.style.transform = 'scale(1)'; }, 200);
+  }
 }
 
 function _cycleStatus() {
@@ -86,7 +112,6 @@ function initShakeStatus() {
 
   // For iOS 13+, need permission
   if (typeof DeviceMotionEvent.requestPermission === 'function') {
-    // Permission will be requested on first tap; set up a one-time tap listener
     document.addEventListener('click', function requestOnce() {
       DeviceMotionEvent.requestPermission().then(state => {
         if (state === 'granted') {
@@ -99,9 +124,12 @@ function initShakeStatus() {
     _startShakeListener();
   }
 
-  // Apply any previously stored status on load
-  const stored = localStorage.getItem('receiptShakeStatus');
-  if (stored) _applyStatus(stored);
+  // Apply previously stored status for THIS receipt only
+  const key = _getReceiptKey();
+  if (key) {
+    const stored = localStorage.getItem(key);
+    if (stored) _applyStatus(stored);
+  }
 }
 
 function _startShakeListener() {

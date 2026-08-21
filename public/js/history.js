@@ -128,6 +128,4 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     loadData();
-    // Start shake-to-cycle-status
-    initShakeStatus();
 });
