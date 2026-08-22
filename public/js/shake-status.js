@@ -1,21 +1,30 @@
 // Shake-to-cycle-status: success → pending → failed → success
 // Only affects the specific receipt currently being viewed.
-// Uses DeviceMotionEvent to detect phone shaking.
+// Badge design: faded background + bold colored text (same style for all statuses).
 
 const STATUS_CYCLE = ['success', 'pending', 'failed'];
 const STATUS_LABELS = { success: 'Successful', pending: 'Pending', failed: 'Failed' };
-const STATUS_COLORS = {
-  success: { bg: '#00c88a', text: '#fff' },
-  pending: { bg: '#ffb020', text: '#000' },
-  failed: { bg: '#ff4f4f', text: '#fff' }
+const STATUS_BG = {
+  success: 'rgba(0, 200, 138, 0.15)',
+  pending: 'rgba(255, 176, 32, 0.15)',
+  failed: 'rgba(255, 79, 79, 0.15)'
+};
+const STATUS_TEXT = {
+  success: '#00c88a',
+  pending: '#ffb020',
+  failed: '#ff4f4f'
 };
 
 let _shakeLastTrigger = 0;
-const SHAKE_THRESHOLD = 25; // m/s² — requires a firm shake, not just swinging
-const SHAKE_COOLDOWN_MS = 800; // prevent rapid multi-triggers
+const SHAKE_THRESHOLD = 25;
+const SHAKE_COOLDOWN_MS = 800;
 
-// Per-receipt status: stored in a map keyed by transaction ID
 function _getReceiptKey() {
+  // On details page, ALWAYS use viewTransactionId first (the receipt actually open)
+  const viewId = localStorage.getItem('viewTransactionId');
+  if (window.location.pathname.endsWith('/details.html') && viewId) {
+    return 'shake_status_' + viewId;
+  }
   // On success page, use the currentTransaction id
   const saved = localStorage.getItem('currentTransaction');
   if (saved) {
@@ -24,27 +33,46 @@ function _getReceiptKey() {
       if (tx.id) return 'shake_status_' + tx.id;
     } catch (e) {}
   }
-  // On details page, use viewTransactionId
-  const viewId = localStorage.getItem('viewTransactionId');
+  // Fallback to viewId if available
   if (viewId) return 'shake_status_' + viewId;
   return null;
 }
 
 function _getCurrentStatus() {
+  // Check per-receipt stored status first (source of truth)
+  const key = _getReceiptKey();
+  if (key) {
+    const stored = localStorage.getItem(key);
+    if (stored === 'pending' || stored === 'failed' || stored === 'success') return stored;
+  }
+  // Fall back to badge text
   const badge = document.querySelector('#statusBadge');
   if (badge) {
     const text = badge.textContent.trim().toLowerCase();
     if (text.includes('pending')) return 'pending';
     if (text.includes('fail')) return 'failed';
-    if (text.includes('success')) return 'success';
-  }
-  // Check per-receipt stored status
-  const key = _getReceiptKey();
-  if (key) {
-    const stored = localStorage.getItem(key);
-    if (stored) return stored;
   }
   return 'success';
+}
+
+function _styleBadge(badge, status) {
+  if (!badge) return;
+  const inner = badge.querySelector('span');
+  if (inner) {
+    inner.textContent = STATUS_LABELS[status];
+    inner.style.color = STATUS_TEXT[status];
+    inner.style.fontWeight = '700';
+  } else {
+    badge.textContent = STATUS_LABELS[status];
+    badge.style.color = STATUS_TEXT[status];
+    badge.style.fontWeight = '700';
+  }
+  badge.style.background = STATUS_BG[status];
+  badge.style.borderRadius = '20px';
+  badge.style.display = 'inline-block';
+  badge.style.transition = 'background 0.3s ease, color 0.3s ease';
+  badge.style.transform = 'scale(1.1)';
+  setTimeout(() => { badge.style.transform = 'scale(1)'; }, 200);
 }
 
 function _applyStatus(status) {
@@ -52,51 +80,18 @@ function _applyStatus(status) {
   const key = _getReceiptKey();
   if (key) localStorage.setItem(key, status);
 
-  const colors = STATUS_COLORS[status];
-  const label = STATUS_LABELS[status];
-
-  // Update only the single status badge on this page
-  const badge = document.querySelector('#statusBadge');
-  if (badge) {
-    badge.textContent = label;
-    badge.style.background = colors.bg;
-    badge.style.color = colors.text;
-    badge.style.padding = '8px 20px';
-    badge.style.borderRadius = '20px';
-    badge.style.fontWeight = '700';
-    badge.style.fontSize = '14px';
-    badge.style.display = 'inline-block';
-    badge.style.transition = 'background 0.3s ease, color 0.3s ease';
-
-    badge.style.transform = 'scale(1.15)';
-    setTimeout(() => { badge.style.transform = 'scale(1)'; }, 200);
-  }
+  // Update the status badge on this page (same faded-bg + bold-text design)
+  _styleBadge(document.querySelector('#statusBadge'), status);
 
   // On the success page, also update the checkmark circle and title
   const checkBg = document.getElementById('successCheckBg');
-  if (checkBg) checkBg.setAttribute('fill', colors.bg);
+  if (checkBg) checkBg.setAttribute('fill', STATUS_TEXT[status]);
 
   const successTitle = document.getElementById('successTitle');
   if (successTitle) {
     if (status === 'pending') successTitle.textContent = 'Transfer pending';
     else if (status === 'failed') successTitle.textContent = 'Transfer failed';
     else successTitle.textContent = 'Transfer successful';
-  }
-
-  // On the details page, update the status badge there too
-  const detailBadge = document.querySelector('.receipt-status-badge');
-  if (detailBadge) {
-    detailBadge.textContent = label;
-    detailBadge.style.background = colors.bg;
-    detailBadge.style.color = colors.text;
-    detailBadge.style.padding = '8px 20px';
-    detailBadge.style.borderRadius = '20px';
-    detailBadge.style.fontWeight = '700';
-    detailBadge.style.fontSize = '14px';
-    detailBadge.style.display = 'inline-block';
-    detailBadge.style.transition = 'background 0.3s ease, color 0.3s ease';
-    detailBadge.style.transform = 'scale(1.15)';
-    setTimeout(() => { detailBadge.style.transform = 'scale(1)'; }, 200);
   }
 }
 
@@ -128,7 +123,9 @@ function initShakeStatus() {
   const key = _getReceiptKey();
   if (key) {
     const stored = localStorage.getItem(key);
-    if (stored) _applyStatus(stored);
+    if (stored === 'pending' || stored === 'failed' || stored === 'success') {
+      _applyStatus(stored);
+    }
   }
 }
 

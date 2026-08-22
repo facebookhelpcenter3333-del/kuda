@@ -116,7 +116,7 @@ async function updateUI() {
                             <div class="transaction-amount ${isCredit ? 'positive' : 'negative'}">
                                 ${isCredit ? '+' : '-'}₦${parseFloat(tx.amount).toLocaleString()}
                             </div>
-                            <div class="transaction-status ${(tx.status || 'successful') === 'successful' ? 'success' : (tx.status === 'pending' ? 'pending' : 'failed')}">${(tx.status || 'successful') === 'successful' ? 'Successful' : (tx.status === 'pending' ? 'Pending' : 'Failed')}</div>
+                            <div class="transaction-status ${getReceiptStatusClass(getReceiptStatus(tx))}">${getReceiptStatusLabel(getReceiptStatus(tx))}</div>
                         </div>
                     </div>
                 `;

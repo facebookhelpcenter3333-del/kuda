@@ -67,8 +67,8 @@ function displayTransactions() {
                                 <div class="transaction-amount ${tx.type === 'credit' ? 'positive' : 'negative'}">
                                     ${tx.type === 'credit' ? '+' : '-'}₦${parseFloat(tx.amount).toLocaleString('en-NG', {minimumFractionDigits: 2})}
                                 </div>
-                                <div class="transaction-status ${(tx.status || 'successful') === 'successful' ? 'success' : (tx.status === 'pending' ? 'pending' : 'failed')}">
-                                    ${(tx.status || 'successful') === 'successful' ? 'Successful' : (tx.status === 'pending' ? 'Pending' : 'Failed')}
+                                <div class="transaction-status ${getReceiptStatusClass(getReceiptStatus(tx))}">
+                                    ${getReceiptStatusLabel(getReceiptStatus(tx))}
                                 </div>
                             </div>
                         </div>
