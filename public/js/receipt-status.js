@@ -4,6 +4,7 @@
 
 function getReceiptStatus(transaction) {
     if (!transaction || !transaction.id) return 'success';
+    if (transaction.status === 'reversed') return 'reversed';
     const stored = localStorage.getItem('shake_status_' + transaction.id);
     if (stored === 'pending' || stored === 'failed' || stored === 'success') return stored;
     if (transaction.status === 'pending') return 'pending';
@@ -12,9 +13,11 @@ function getReceiptStatus(transaction) {
 }
 
 function getReceiptStatusLabel(status) {
+    if (status === 'reversed') return 'Reversed';
     return status === 'pending' ? 'Pending' : status === 'failed' ? 'Failed' : 'Successful';
 }
 
 function getReceiptStatusClass(status) {
+    if (status === 'reversed') return 'reversed';
     return status === 'pending' ? 'pending' : status === 'failed' ? 'failed' : 'success';
 }

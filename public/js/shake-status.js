@@ -120,7 +120,7 @@ function _reverseTransaction(receiptId) {
     narration: 'Reversal of ' + (tx.referenceNumber || tx.id),
     referenceNumber: 'REV' + (tx.referenceNumber || tx.id),
     date: new Date().toISOString(),
-    status: 'success'
+    status: 'reversed'
   };
   appData.transactions.unshift(reversedTx);
 
