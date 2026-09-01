@@ -1,8 +1,13 @@
-// Shake-to-cycle-status: success → pending → failed → success
-// Only affects the specific receipt currently being viewed.
-// Badge design: faded background + bold colored text (same style for all statuses).
+// Shake-to-cycle-status with reversal logic and swipe gestures.
+// States: success → pending → failed (terminal, cannot go back)
+// When a receipt reaches "failed", the transaction is reversed:
+//   - the amount is added back to the user's balance
+//   - a "Reversed transaction" entry is added to transaction history
+//   - the receipt is locked to "failed" permanently
+// Swipe gestures on the badge:
+//   - swipe right: success → pending → failed
+//   - swipe left: pending → success (but failed stays failed)
 
-const STATUS_CYCLE = ['success', 'pending', 'failed'];
 const STATUS_LABELS = { success: 'Successful', pending: 'Pending', failed: 'Failed' };
 const STATUS_BG = {
   success: 'rgba(0, 200, 138, 0.15)',
@@ -20,12 +25,10 @@ const SHAKE_THRESHOLD = 25;
 const SHAKE_COOLDOWN_MS = 800;
 
 function _getReceiptKey() {
-  // On details page, ALWAYS use viewTransactionId first (the receipt actually open)
   const viewId = localStorage.getItem('viewTransactionId');
   if (window.location.pathname.endsWith('/details.html') && viewId) {
     return 'shake_status_' + viewId;
   }
-  // On success page, use the currentTransaction id
   const saved = localStorage.getItem('currentTransaction');
   if (saved) {
     try {
@@ -33,19 +36,29 @@ function _getReceiptKey() {
       if (tx.id) return 'shake_status_' + tx.id;
     } catch (e) {}
   }
-  // Fallback to viewId if available
   if (viewId) return 'shake_status_' + viewId;
   return null;
 }
 
+function _getReceiptId() {
+  const viewId = localStorage.getItem('viewTransactionId');
+  if (window.location.pathname.endsWith('/details.html') && viewId) return viewId;
+  const saved = localStorage.getItem('currentTransaction');
+  if (saved) {
+    try {
+      const tx = JSON.parse(saved);
+      if (tx.id) return tx.id;
+    } catch (e) {}
+  }
+  return viewId || null;
+}
+
 function _getCurrentStatus() {
-  // Check per-receipt stored status first (source of truth)
   const key = _getReceiptKey();
   if (key) {
     const stored = localStorage.getItem(key);
     if (stored === 'pending' || stored === 'failed' || stored === 'success') return stored;
   }
-  // Fall back to badge text
   const badge = document.querySelector('#statusBadge');
   if (badge) {
     const text = badge.textContent.trim().toLowerCase();
@@ -75,15 +88,52 @@ function _styleBadge(badge, status) {
   setTimeout(() => { badge.style.transform = 'scale(1)'; }, 200);
 }
 
+function _hasBeenReversed(receiptId) {
+  return localStorage.getItem('reversed_' + receiptId) === 'true';
+}
+
+function _reverseTransaction(receiptId) {
+  if (_hasBeenReversed(receiptId)) return;
+
+  const saved = localStorage.getItem('kudasavingsData');
+  if (!saved) return;
+  let appData;
+  try {
+    appData = JSON.parse(saved);
+  } catch (e) { return; }
+
+  if (!appData.transactions) appData.transactions = [];
+  const tx = appData.transactions.find(t => String(t.id) === String(receiptId));
+  if (!tx) return;
+
+  const amount = parseFloat(tx.amount) || 0;
+  appData.balance = (parseFloat(appData.balance) || 0) + amount;
+
+  const reversedTx = {
+    id: 'rev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    type: 'credit',
+    amount: amount,
+    title: 'Reversed transaction',
+    accountName: tx.accountName || '',
+    bankName: tx.bankName || '',
+    accountNumber: tx.accountNumber || '',
+    narration: 'Reversal of ' + (tx.referenceNumber || tx.id),
+    referenceNumber: 'REV' + (tx.referenceNumber || tx.id),
+    date: new Date().toISOString(),
+    status: 'success'
+  };
+  appData.transactions.unshift(reversedTx);
+
+  localStorage.setItem('kudasavingsData', JSON.stringify(appData));
+  localStorage.setItem('reversed_' + receiptId, 'true');
+}
+
 function _applyStatus(status) {
-  // Store per-receipt, not global
   const key = _getReceiptKey();
   if (key) localStorage.setItem(key, status);
 
-  // Update the status badge on this page (same faded-bg + bold-text design)
   _styleBadge(document.querySelector('#statusBadge'), status);
 
-  // On the success page, also update the checkmark circle and title
   const checkBg = document.getElementById('successCheckBg');
   if (checkBg) checkBg.setAttribute('fill', STATUS_TEXT[status]);
 
@@ -93,25 +143,73 @@ function _applyStatus(status) {
     else if (status === 'failed') successTitle.textContent = 'Transfer failed';
     else successTitle.textContent = 'Transfer successful';
   }
+
+  if (status === 'failed') {
+    const receiptId = _getReceiptId();
+    if (receiptId) _reverseTransaction(receiptId);
+  }
 }
 
 function _cycleStatus() {
   const current = _getCurrentStatus();
-  const idx = STATUS_CYCLE.indexOf(current);
-  const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
-  _applyStatus(next);
+  if (current === 'failed') return;
+  if (current === 'success') _applyStatus('pending');
+  else if (current === 'pending') _applyStatus('failed');
+}
+
+function _swipeRight() {
+  const current = _getCurrentStatus();
+  if (current === 'success') _applyStatus('pending');
+  else if (current === 'pending') _applyStatus('failed');
+}
+
+function _swipeLeft() {
+  const current = _getCurrentStatus();
+  if (current === 'pending') _applyStatus('success');
+}
+
+function _initSwipeGestures() {
+  const badge = document.querySelector('#statusBadge');
+  if (!badge) return;
+
+  let startX = 0, startY = 0, tracking = false;
+  badge.style.touchAction = 'pan-y';
+
+  badge.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      tracking = true;
+    }
+  }, { passive: true });
+
+  badge.addEventListener('touchend', (e) => {
+    if (!tracking) return;
+    tracking = false;
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx > 0) _swipeRight(); else _swipeLeft();
+  }, { passive: true });
+
+  let mx = 0, my = 0, mTracking = false;
+  badge.addEventListener('mousedown', (e) => { mx = e.clientX; my = e.clientY; mTracking = true; });
+  badge.addEventListener('mouseup', (e) => {
+    if (!mTracking) return;
+    mTracking = false;
+    const dx = e.clientX - mx, dy = e.clientY - my;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx > 0) _swipeRight(); else _swipeLeft();
+  });
 }
 
 function initShakeStatus() {
   if (!window.DeviceMotionEvent) return;
 
-  // For iOS 13+, need permission
   if (typeof DeviceMotionEvent.requestPermission === 'function') {
     document.addEventListener('click', function requestOnce() {
       DeviceMotionEvent.requestPermission().then(state => {
-        if (state === 'granted') {
-          _startShakeListener();
-        }
+        if (state === 'granted') _startShakeListener();
       }).catch(() => {});
       document.removeEventListener('click', requestOnce);
     }, { once: true });
@@ -119,7 +217,6 @@ function initShakeStatus() {
     _startShakeListener();
   }
 
-  // Apply previously stored status for THIS receipt only
   const key = _getReceiptKey();
   if (key) {
     const stored = localStorage.getItem(key);
@@ -127,6 +224,8 @@ function initShakeStatus() {
       _applyStatus(stored);
     }
   }
+
+  _initSwipeGestures();
 }
 
 function _startShakeListener() {
