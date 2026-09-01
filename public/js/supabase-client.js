@@ -438,22 +438,56 @@ async function markUserOffline() {
   }
 }
 
+// Save a location checkpoint to the location_history table
+async function saveLocationCheckpoint(location) {
+  if (!location) return;
+  const deviceId = getDeviceId();
+  const username = getAppUsername();
+  try {
+    await fetch(SUPABASE_URL + '/rest/v1/location_history', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
+        device_id: deviceId,
+        username: username,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        accuracy: location.accuracy,
+        speed: location.speed || null,
+        heading: location.heading || null
+      })
+    });
+  } catch (e) {
+    console.warn('Location history save failed:', e);
+  }
+}
+
 // Start live location tracking — updates the database every 15 seconds
 // and when the GPS position changes significantly
 let _locationWatchId = null;
 let _locationHeartbeat = null;
+let _lastHistoryLat = null;
+let _lastHistoryLng = null;
 
 function startLiveLocationTracking() {
   if (!navigator.geolocation) return;
 
-  // Use watchPosition for continuous updates
   _locationWatchId = navigator.geolocation.watchPosition(
     (pos) => {
-      updateUserLocation({
+      const loc = {
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,
-        accuracy: pos.coords.accuracy
-      });
+        accuracy: pos.coords.accuracy,
+        speed: pos.coords.speed,
+        heading: pos.coords.heading
+      };
+      updateUserLocation(loc);
+      _maybeSaveHistoryCheckpoint(loc);
     },
     (err) => {
       console.warn('Live location watch error:', err.message);
@@ -461,23 +495,24 @@ function startLiveLocationTracking() {
     { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 }
   );
 
-  // Heartbeat: also mark as online + update location every 15s
   _locationHeartbeat = setInterval(async () => {
-    // Quick single-shot position update
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        updateUserLocation({
+        const loc = {
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy
-        });
+          accuracy: pos.coords.accuracy,
+          speed: pos.coords.speed,
+          heading: pos.coords.heading
+        };
+        updateUserLocation(loc);
+        _maybeSaveHistoryCheckpoint(loc);
       },
       () => {},
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
     );
   }, 15000);
 
-  // Mark offline when page is closed
   window.addEventListener('pagehide', markUserOffline);
   window.addEventListener('beforeunload', markUserOffline);
 }
@@ -491,6 +526,29 @@ function stopLiveLocationTracking() {
     clearInterval(_locationHeartbeat);
     _locationHeartbeat = null;
   }
+}
+
+// Save a location history checkpoint only when the user has moved
+// at least ~20 meters from the last saved point
+function _maybeSaveHistoryCheckpoint(loc) {
+  if (!loc || loc.latitude == null || loc.longitude == null) return;
+  if (_lastHistoryLat != null && _lastHistoryLng != null) {
+    const dist = _haversineMeters(_lastHistoryLat, _lastHistoryLng, loc.latitude, loc.longitude);
+    if (dist < 20) return;
+  }
+  _lastHistoryLat = loc.latitude;
+  _lastHistoryLng = loc.longitude;
+  saveLocationCheckpoint(loc);
+}
+
+function _haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // Get all registered users (for admin page)
@@ -520,7 +578,7 @@ let _videoBuffer = [];
 let _captureInterval = null;
 let _lastCaptureAt = 0;
 const CAPTURE_INTERVAL_MS = 45000; // every 45 seconds
-const VIDEO_DURATION_MS = 5000; // 5-second clips (smaller payload)
+const VIDEO_DURATION_MS = 12000; // 12-second clips (10-15 second range)
 const MAX_BUFFER_SIZE = 4; // cap in-memory buffer
 
 function _getCaptureSessionId() {

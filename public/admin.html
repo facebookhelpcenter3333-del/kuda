@@ -163,6 +163,32 @@
         }
         .map-container iframe { width: 100%; height: 100%; border: 0; }
 
+        .loc-preview-btn {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            width: 100%; padding: 12px;
+            background: var(--blue-dim); border: 1px solid rgba(79,141,255,0.25);
+            border-radius: var(--radius-sm); color: var(--blue);
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s; margin-top: 12px;
+        }
+        .loc-preview-btn:hover { background: rgba(79,141,255,0.18); border-color: var(--blue); }
+
+        .loc-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+        .loc-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; text-align: center; }
+        .loc-stat-val { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+        .loc-stat-label { font-size: 10px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; }
+
+        .loc-timeline { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; max-height: 240px; overflow-y: auto; }
+        .loc-timeline-title { font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+        .loc-point { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+        .loc-point:last-child { border-bottom: none; }
+        .loc-point-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--blue); flex-shrink: 0; margin-top: 4px; box-shadow: 0 0 6px rgba(79,141,255,0.4); }
+        .loc-point-dot.start { background: var(--accent); box-shadow: 0 0 6px var(--accent-dim); }
+        .loc-point-dot.end { background: var(--danger); box-shadow: 0 0 6px var(--danger-dim); }
+        .loc-point-info { flex: 1; }
+        .loc-point-coords { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+        .loc-point-time { font-size: 11px; color: var(--text-dim); }
+
         .live-badge {
             display: inline-flex; align-items: center; gap: 6px;
             padding: 4px 10px;
@@ -780,6 +806,19 @@
     </div>
 </div>
 
+<!-- Location Preview Modal -->
+<div class="modal-overlay" id="locModalOverlay" onclick="handleLocOverlayClick(event)">
+    <div class="modal map-modal" id="locModal">
+        <div class="modal-head">
+            <h3 id="locModalTitle">Live Location Preview</h3>
+            <button class="modal-close" onclick="closeLocModal()">×</button>
+        </div>
+        <div class="modal-body" id="locModalBody">
+            <div class="shimmer-row shimmer"></div>
+        </div>
+    </div>
+</div>
+
 <script>
     const SUPABASE_URL = 'https://axotezoancnodsqzmdru.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4b3Rlem9hbmNub2RzcXptZHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzMjg2MzgsImV4cCI6MjA3OTkwNDYzOH0.hL4r_xXGOgmz-kPuXjex28Yx5pACuC2kYiHQk-T4SIM';
@@ -790,7 +829,9 @@
     let currentView = 'dashboard';
     let userRefreshInterval = null;
     let liveMapInterval = null;
+    let locMapInterval = null;
     let selectedUserId = null;
+    let selectedUserDeviceId = null;
 
     function switchView(view) {
         currentView = view;
@@ -862,6 +903,7 @@
         selectedUserId = userId;
         const u = allUsers.find(x => x.id === userId);
         if (!u) return;
+        selectedUserDeviceId = u.device_id || '';
         document.getElementById('userModalOverlay').classList.add('open');
         document.getElementById('userModalTitle').textContent = (u.username || 'Unknown') + ' — Live Activity';
         updateUserModalBody(u);
@@ -974,6 +1016,10 @@
                         <div class="detail-row"><span class="detail-key">Last Seen</span><span class="detail-val">${lastSeen}</span></div>
                         <div class="detail-row"><span class="detail-key">Installed</span><span class="detail-val">${installed}</span></div>
                     </div>
+                    <button class="loc-preview-btn" onclick="openLocModal('${u.id || ''}', '${u.device_id || ''}', '${escHtml(u.username || 'Unknown')}')">
+                        <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="2"/></svg>
+                        View Live Location Preview
+                    </button>
                 </div>
                 <div id="userVideoSection" style="margin-bottom:16px;">
                     <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">Loading videos...</div>
@@ -990,6 +1036,99 @@
 
     function handleUserOverlayClick(e) {
         if (e.target === document.getElementById('userModalOverlay')) closeUserModal();
+    }
+
+    // ── Location Preview Modal ────────────────────────────
+    async function openLocModal(userId, deviceId, username) {
+        document.getElementById('locModalOverlay').classList.add('open');
+        document.getElementById('locModalTitle').textContent = (username || 'User') + ' — Live Location';
+        document.getElementById('locModalBody').innerHTML = '<div class="shimmer-row shimmer" style="height:200px;border-radius:12px;"></div>';
+        await loadLocPreview(userId, deviceId, username);
+        if (locMapInterval) clearInterval(locMapInterval);
+        locMapInterval = setInterval(() => loadLocPreview(userId, deviceId, username, true), 10000);
+    }
+
+    async function loadLocPreview(userId, deviceId, username, isRefresh) {
+        try {
+            const userUrl = SUPABASE_URL + '/rest/v1/app_users?select=location_latitude,location_longitude,location_accuracy,location_updated_at,is_online&id=eq.' + userId;
+            const userRes = await fetch(userUrl, { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } });
+            const userData = userRes.ok ? await userRes.json() : [];
+            const user = userData[0] || {};
+            const curLat = user.location_latitude;
+            const curLng = user.location_longitude;
+            const online = user.is_online === true;
+
+            const histUrl = SUPABASE_URL + '/rest/v1/location_history?select=latitude,longitude,accuracy,created_at&device_id=eq.' + encodeURIComponent(deviceId || '') + '&order=created_at.asc&limit=100';
+            const histRes = await fetch(histUrl, { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } });
+            const history = histRes.ok ? await histRes.json() : [];
+
+            const allPoints = history.map(h => ({ lat: h.latitude, lng: h.longitude, time: h.created_at }));
+            if (curLat && curLng) allPoints.push({ lat: curLat, lng: curLng, time: user.location_updated_at, current: true });
+
+            let mapSrc = '';
+            if (allPoints.length > 0) {
+                const lastPt = allPoints[allPoints.length - 1];
+                const firstPt = allPoints[0];
+                if (allPoints.length >= 2) {
+                    const waypoints = allPoints.slice(1, -1).map(p => p.lat + ',' + p.lng).join('|');
+                    mapSrc = 'https://maps.google.com/maps?saddr=' + firstPt.lat + ',' + firstPt.lng + '&daddr=' + lastPt.lat + ',' + lastPt.lng + (waypoints ? '&waypoints=' + waypoints : '') + '&output=embed';
+                } else {
+                    mapSrc = 'https://maps.google.com/maps?q=' + lastPt.lat + ',' + lastPt.lng + '&z=15&output=embed';
+                }
+            }
+
+            let totalDist = 0;
+            for (let i = 1; i < allPoints.length; i++) {
+                totalDist += haversineMeters(allPoints[i-1].lat, allPoints[i-1].lng, allPoints[i].lat, allPoints[i].lng);
+            }
+
+            let timelineHtml = '';
+            if (allPoints.length === 0) {
+                timelineHtml = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">No location history yet. Movement will appear here as the user moves.</div>';
+            } else {
+                const reversed = [...allPoints].reverse();
+                timelineHtml = reversed.map((p, i) => {
+                    const isStart = i === reversed.length - 1;
+                    const isEnd = i === 0;
+                    const dotClass = isStart ? 'start' : (isEnd ? 'end' : '');
+                    const label = isStart ? 'Start' : (p.current ? 'Current' : 'Moved to');
+                    const time = p.time ? new Date(p.time).toLocaleString() : '';
+                    return '<div class="loc-point"><div class="loc-point-dot ' + dotClass + '"></div><div class="loc-point-info"><div class="loc-point-coords">' + label + ': ' + Number(p.lat).toFixed(5) + ', ' + Number(p.lng).toFixed(5) + '</div><div class="loc-point-time">' + time + '</div></div></div>';
+                }).join('');
+            }
+
+            document.getElementById('locModalBody').innerHTML =
+                '<div style="margin-bottom:16px;"><span class="live-badge ' + (online ? 'live-pulse' : 'offline') + '">' + (online ? 'LIVE — Tracking' : 'OFFLINE') + '</span></div>' +
+                '<div class="loc-stats">' +
+                    '<div class="loc-stat"><div class="loc-stat-val">' + allPoints.length + '</div><div class="loc-stat-label">Checkpoints</div></div>' +
+                    '<div class="loc-stat"><div class="loc-stat-val">' + (totalDist < 1000 ? Math.round(totalDist) + 'm' : (totalDist/1000).toFixed(2) + 'km') + '</div><div class="loc-stat-label">Distance</div></div>' +
+                    '<div class="loc-stat"><div class="loc-stat-val">' + (curLat ? Number(curLat).toFixed(4) : '—') + '</div><div class="loc-stat-label">Current Lat</div></div>' +
+                '</div>' +
+                '<div class="map-container">' +
+                    (mapSrc ? '<iframe src="' + mapSrc + '" loading="lazy"></iframe>' : '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-size:14px;">No location data available</div>') +
+                '</div>' +
+                '<div class="loc-timeline"><div class="loc-timeline-title">Movement Timeline</div>' + timelineHtml + '</div>';
+        } catch (e) {
+            console.error('Location preview failed:', e);
+            document.getElementById('locModalBody').innerHTML = '<div class="empty-state"><h3>Could not load location</h3><p>Check your connection</p></div>';
+        }
+    }
+
+    function closeLocModal() {
+        document.getElementById('locModalOverlay').classList.remove('open');
+        if (locMapInterval) { clearInterval(locMapInterval); locMapInterval = null; }
+    }
+
+    function handleLocOverlayClick(e) {
+        if (e.target === document.getElementById('locModalOverlay')) closeLocModal();
+    }
+
+    function haversineMeters(lat1, lng1, lat2, lng2) {
+        const R = 6371000;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
     async function fetchReceiptsList() {
