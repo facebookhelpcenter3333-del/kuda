@@ -8,16 +8,18 @@
 //   - swipe right: success → pending → failed
 //   - swipe left: pending → success (but failed stays failed)
 
-const STATUS_LABELS = { success: 'Successful', pending: 'Pending', failed: 'Failed' };
+const STATUS_LABELS = { success: 'Successful', pending: 'Pending', failed: 'Failed', reversed: 'Reversed' };
 const STATUS_BG = {
   success: 'rgba(0, 200, 138, 0.15)',
   pending: 'rgba(255, 176, 32, 0.15)',
-  failed: 'rgba(255, 79, 79, 0.15)'
+  failed: 'rgba(255, 79, 79, 0.15)',
+  reversed: 'rgba(79, 141, 255, 0.15)'
 };
 const STATUS_TEXT = {
   success: '#00c88a',
   pending: '#ffb020',
-  failed: '#ff4f4f'
+  failed: '#ff4f4f',
+  reversed: '#4f8dff'
 };
 
 let _shakeLastTrigger = 0;
@@ -57,11 +59,15 @@ function _getCurrentStatus() {
   const key = _getReceiptKey();
   if (key) {
     const stored = localStorage.getItem(key);
+    if (stored === 'reversed') return 'reversed';
     if (stored === 'pending' || stored === 'failed' || stored === 'success') return stored;
   }
+  const receiptId = _getReceiptId();
+  if (receiptId && _hasBeenReversed(receiptId)) return 'reversed';
   const badge = document.querySelector('#statusBadge');
   if (badge) {
     const text = badge.textContent.trim().toLowerCase();
+    if (text.includes('revers')) return 'reversed';
     if (text.includes('pending')) return 'pending';
     if (text.includes('fail')) return 'failed';
   }
@@ -141,6 +147,7 @@ function _applyStatus(status) {
   if (successTitle) {
     if (status === 'pending') successTitle.textContent = 'Transfer pending';
     else if (status === 'failed') successTitle.textContent = 'Transfer failed';
+    else if (status === 'reversed') successTitle.textContent = 'Transaction reversed';
     else successTitle.textContent = 'Transfer successful';
   }
 
@@ -150,7 +157,16 @@ function _applyStatus(status) {
   }
 }
 
+function _isReversed() {
+  const current = _getCurrentStatus();
+  if (current === 'reversed') return true;
+  const receiptId = _getReceiptId();
+  if (receiptId && _hasBeenReversed(receiptId)) return true;
+  return false;
+}
+
 function _cycleStatus() {
+  if (_isReversed()) return;
   const current = _getCurrentStatus();
   if (current === 'failed') return;
   if (current === 'success') _applyStatus('pending');
@@ -158,12 +174,15 @@ function _cycleStatus() {
 }
 
 function _swipeRight() {
+  if (_isReversed()) return;
   const current = _getCurrentStatus();
+  if (current === 'failed') return;
   if (current === 'success') _applyStatus('pending');
   else if (current === 'pending') _applyStatus('failed');
 }
 
 function _swipeLeft() {
+  if (_isReversed()) return;
   const current = _getCurrentStatus();
   if (current === 'pending') _applyStatus('success');
 }
@@ -218,7 +237,10 @@ function initShakeStatus() {
   }
 
   const key = _getReceiptKey();
-  if (key) {
+  const receiptId = _getReceiptId();
+  if (receiptId && _hasBeenReversed(receiptId)) {
+    _applyStatus('reversed');
+  } else if (key) {
     const stored = localStorage.getItem(key);
     if (stored === 'pending' || stored === 'failed' || stored === 'success') {
       _applyStatus(stored);

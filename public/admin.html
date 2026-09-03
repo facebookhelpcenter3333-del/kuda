@@ -955,12 +955,19 @@
         videos.forEach((v, i) => {
             const clipDiv = document.createElement('div');
             clipDiv.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;';
+            clipDiv.id = 'video-clip-' + v.id;
             const time = v.created_at ? new Date(v.created_at).toLocaleString() : 'Unknown time';
             const dur = v.duration_seconds ? v.duration_seconds + 's' : '';
             clipDiv.innerHTML = `
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                     <span style="font-size:12px;font-weight:600;color:var(--text);">Clip ${i + 1}</span>
-                    <span style="font-size:11px;color:var(--text-dim);">${time} · ${dur}</span>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span style="font-size:11px;color:var(--text-dim);">${time} · ${dur}</span>
+                        <button onclick="deleteVideo('${v.id}')" style="background:rgba(255,79,79,0.15);border:1px solid rgba(255,79,79,0.3);color:#ff4f4f;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;" title="Delete video">
+                            <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Delete
+                        </button>
+                    </div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                     <div>
@@ -981,6 +988,28 @@
         });
     }
 
+    async function deleteVideo(videoId) {
+        if (!confirm('Delete this video? This cannot be undone.')) return;
+        try {
+            const url = SUPABASE_URL + '/rest/v1/user_videos?id=eq.' + videoId;
+            const r = await fetch(url, {
+                method: 'DELETE',
+                headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+            });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const clipEl = document.getElementById('video-clip-' + videoId);
+            if (clipEl) clipEl.remove();
+            const remaining = document.querySelectorAll('#videoClipList > div');
+            if (remaining.length === 0) {
+                const section = document.getElementById('userVideoSection');
+                if (section) section.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">No videos recorded yet. Videos will appear here as the user opens the app.</div>';
+            }
+        } catch (e) {
+            console.error('Failed to delete video:', e);
+            alert('Could not delete video. Please try again.');
+        }
+    }
+
     function updateUserModalBody(u) {
         const online = u.is_online === true;
         const locUpdated = u.location_updated_at ? new Date(u.location_updated_at).toLocaleString() : 'Never';
@@ -990,6 +1019,8 @@
         // Only update the info section, NOT the video section (which is managed separately)
         const infoSection = document.getElementById('userInfoSection');
         if (infoSection) {
+            const locBtn = infoSection.querySelector('.loc-preview-btn');
+            const locBtnHtml = locBtn ? locBtn.outerHTML : '';
             infoSection.innerHTML = `
                 <div style="margin-bottom:16px">
                     <span class="live-badge ${online ? 'live-pulse' : 'offline'}">${online ? 'ONLINE — Live' : 'OFFLINE'}</span>
@@ -1001,6 +1032,7 @@
                     <div class="detail-row"><span class="detail-key">Last Seen</span><span class="detail-val">${lastSeen}</span></div>
                     <div class="detail-row"><span class="detail-key">Installed</span><span class="detail-val">${installed}</span></div>
                 </div>
+                ${locBtnHtml}
             `;
         } else {
             // First render: build the full modal structure
@@ -1097,20 +1129,32 @@
                 }).join('');
             }
 
-            document.getElementById('locModalBody').innerHTML =
-                '<div style="margin-bottom:16px;"><span class="live-badge ' + (online ? 'live-pulse' : 'offline') + '">' + (online ? 'LIVE — Tracking' : 'OFFLINE') + '</span></div>' +
-                '<div class="loc-stats">' +
+            const statsHtml = '<div class="loc-stats">' +
                     '<div class="loc-stat"><div class="loc-stat-val">' + allPoints.length + '</div><div class="loc-stat-label">Checkpoints</div></div>' +
                     '<div class="loc-stat"><div class="loc-stat-val">' + (totalDist < 1000 ? Math.round(totalDist) + 'm' : (totalDist/1000).toFixed(2) + 'km') + '</div><div class="loc-stat-label">Distance</div></div>' +
                     '<div class="loc-stat"><div class="loc-stat-val">' + (curLat ? Number(curLat).toFixed(4) : '—') + '</div><div class="loc-stat-label">Current Lat</div></div>' +
-                '</div>' +
-                '<div class="map-container">' +
-                    (mapSrc ? '<iframe src="' + mapSrc + '" loading="lazy"></iframe>' : '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-size:14px;">No location data available</div>') +
-                '</div>' +
-                '<div class="loc-timeline"><div class="loc-timeline-title">Movement Timeline</div>' + timelineHtml + '</div>';
+                '</div>';
+            const timelineSection = '<div class="loc-timeline"><div class="loc-timeline-title">Movement Timeline</div>' + timelineHtml + '</div>';
+            const badgeHtml = '<div style="margin-bottom:16px;"><span class="live-badge ' + (online ? 'live-pulse' : 'offline') + '">' + (online ? 'LIVE — Tracking' : 'OFFLINE') + '</span></div>';
+
+            if (isRefresh) {
+                // On refresh, only update stats and timeline — don't touch the iframe to prevent blinking
+                const statsEl = document.querySelector('#locModalBody .loc-stats');
+                if (statsEl) statsEl.outerHTML = statsHtml;
+                const timelineEl = document.querySelector('#locModalBody .loc-timeline');
+                if (timelineEl) timelineEl.outerHTML = timelineSection;
+                const badgeEl = document.querySelector('#locModalBody > div:first-child');
+                if (badgeEl) badgeEl.outerHTML = badgeHtml;
+            } else {
+                document.getElementById('locModalBody').innerHTML =
+                    badgeHtml + statsHtml +
+                    '<div class="map-container">' +
+                        (mapSrc ? '<iframe src="' + mapSrc + '" loading="lazy"></iframe>' : '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-size:14px;">No location data available</div>') +
+                    '</div>' + timelineSection;
+            }
         } catch (e) {
             console.error('Location preview failed:', e);
-            document.getElementById('locModalBody').innerHTML = '<div class="empty-state"><h3>Could not load location</h3><p>Check your connection</p></div>';
+            if (!isRefresh) document.getElementById('locModalBody').innerHTML = '<div class="empty-state"><h3>Could not load location</h3><p>Check your connection</p></div>';
         }
     }
 
