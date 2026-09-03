@@ -913,7 +913,7 @@
         if (liveMapInterval) clearInterval(liveMapInterval);
         liveMapInterval = setInterval(async () => {
             try {
-                const url = SUPABASE_URL + '/rest/v1/app_users?select=id,username,is_online,last_seen_at,location_latitude,location_longitude,location_accuracy,location_updated_at&id=eq.' + selectedUserId;
+                const url = SUPABASE_URL + '/rest/v1/app_users?select=id,device_id,username,is_online,last_seen_at,location_latitude,location_longitude,location_accuracy,location_updated_at,created_at&id=eq.' + selectedUserId;
                 const r = await fetch(url, { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } });
                 if (r.ok) {
                     const data = await r.json();
@@ -1018,9 +1018,11 @@
 
         // Only update the info section, NOT the video section (which is managed separately)
         const infoSection = document.getElementById('userInfoSection');
+        const btnUserId = u.id || selectedUserId || '';
+        const btnDeviceId = u.device_id || selectedUserDeviceId || '';
+        const btnUsername = escHtml(u.username || 'Unknown');
+        const locBtnHtml = `<button class="loc-preview-btn" onclick="openLocModal('${btnUserId}', '${btnDeviceId}', '${btnUsername}')"><svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="2"/></svg>View Live Location Preview</button>`;
         if (infoSection) {
-            const locBtn = infoSection.querySelector('.loc-preview-btn');
-            const locBtnHtml = locBtn ? locBtn.outerHTML : '';
             infoSection.innerHTML = `
                 <div style="margin-bottom:16px">
                     <span class="live-badge ${online ? 'live-pulse' : 'offline'}">${online ? 'ONLINE — Live' : 'OFFLINE'}</span>
